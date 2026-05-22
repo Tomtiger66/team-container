@@ -22,7 +22,7 @@ spec:
            claimName: traefik-cert
       containers:
         - name: traefik
-          image: traefik:v2.2
+          image: traefik:v3.3
           imagePullPolicy: Always
           volumeMounts:
            - name: cert-vol
@@ -33,6 +33,8 @@ spec:
             - --entrypoints.web.Address=:80
             - --entrypoints.websecure.Address=:443
             - --providers.kubernetescrd
+            - --core.defaultRuleSyntax=v2
+            - --providers.kubernetescrd.allowCrossNamespace=true
             - --certificatesresolvers.default.acme.tlschallenge
             - --certificatesresolvers.default.acme.email={{ .Values.acme.mail }}
             - --certificatesresolvers.default.acme.storage=/data/acme.json
