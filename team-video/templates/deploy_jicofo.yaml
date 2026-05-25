@@ -19,7 +19,7 @@ spec:
     spec:
       containers:
        - name: jicofo
-         image: jitsi/jicofo
+         image: jitsi/jicofo:stable-10741
          imagePullPolicy: {{ .Values.app.pullpolicy }}
          env:
           {{ if .Values.auth.enabled}}
@@ -36,13 +36,15 @@ spec:
           - name: XMPP_SERVER
             value: {{ include "team-video.fullname" . }}-prosody
           - name: XMPP_DOMAIN
-            value: {{ .Values.app.name }}.{{ .Values.app.domain }}
+            value: meet.jitsi
           - name: XMPP_AUTH_DOMAIN
-            value: auth.{{ .Values.app.name }}.{{ .Values.app.domain }}
-            {{ if .Values.auth.guests}}
+            value: auth.meet.jitsi
+          - name: XMPP_INTERNAL_MUC_DOMAIN
+            value: internal-muc.meet.jitsi
+          {{ if .Values.auth.guests}}
           - name: XMPP_GUEST_DOMAIN
-            value: guest.{{ .Values.app.name }}.{{ .Values.app.domain }}
-            {{end}}
+            value: guest.meet.jitsi
+          {{end}}
           - name: JICOFO_COMPONENT_SECRET
             value: {{ .Values.secrets.jicofo.component }}
           - name: JICOFO_AUTH_USER
@@ -51,7 +53,5 @@ spec:
             value: {{ .Values.secrets.jicofo.auth }}
           - name: JVB_BREWERY_MUC
             value: jvbbrewery
-          - name: XMPP_INTERNAL_MUC_DOMAIN
-            value: internal-muc.{{ .Values.app.name }}.{{ .Values.app.domain }}
           - name: TZ
             value: Europe/Paris
