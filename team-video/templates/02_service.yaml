@@ -1,4 +1,4 @@
-# Public service 
+# Public service - JVB
 apiVersion: v1
 kind: Service
 metadata:
@@ -22,6 +22,7 @@ spec:
   selector:
     app: {{ include "team-video.fullname" . }}-jvb
 ---
+# Web service
 apiVersion: v1
 kind: Service
 metadata:
@@ -35,13 +36,14 @@ spec:
   selector:
     app: {{ include "team-video.fullname" . }}-web
 ---
+# Prosody XMPP service
 apiVersion: v1
 kind: Service
 metadata:
-  labels:
-    service: {{ include "team-video.fullname" . }}-prosody
   name: {{ include "team-video.fullname" . }}-prosody
   namespace: default
+  labels:
+    service: {{ include "team-video.fullname" . }}-prosody
 spec:
   ports:
   - name: "5222"
