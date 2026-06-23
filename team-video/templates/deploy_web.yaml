@@ -19,7 +19,7 @@ spec:
     spec:
       containers:
        - name: web
-         image: jitsi/web:stable-10741
+         image: jitsi/web:stable
          imagePullPolicy: {{ .Values.app.pullpolicy }}
          ports:
           - name: web
@@ -67,3 +67,7 @@ spec:
             value: "false"
           - name: TZ
             value: Europe/Paris
+# HIER STARTET DIE ERWEITERUNG:
+          {{- if .Values.webExtraEnv }}
+          {{- toYaml .Values.webExtraEnv | nindent 10 }}
+          {{- end }}
