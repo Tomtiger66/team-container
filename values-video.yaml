@@ -31,3 +31,24 @@ hideWelcomePage: true
 # Remove following # to use different stun servers
 # stun:
 #  server: stun.stunprotocol.org:3478, stun.services.mozilla.com:3478
+# JVB Bandbreiten-Verhalten:
+
+# Standardmäßig (auskommentiert = Jitsi-Standardverhalten) schaltet der JVB Video
+# automatisch ab, sobald er eine zu geringe Bandbreite vermutet. Das ist sinnvoll
+# bei vielen Teilnehmern, kann aber bei Einzelunterricht/wenigen Teilnehmern stören,
+# weil das Video komplett abgeschaltet wird statt nur die Qualität zu reduzieren.
+# Zeile aktivieren (auskommentieren entfernen) und auf "false" setzen, um das
+# automatische Abschalten zu deaktivieren - Video bleibt dann immer an, kann aber
+# bei tatsächlich schlechter Verbindung eher ruckeln statt sich sanft anzupassen.
+# jvbTrustBwe: false
+ 
+webExtraEnv:
+
+  - name: ENABLE_AUDIO_PROCESSING
+    value: "true"
+  - name: DISABLE_NS
+    value: "true"
+  - name: DISABLE_HPF
+    value: "true"
+  - name: ENABLE_STEREO
+    value: "true"
