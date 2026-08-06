@@ -1,0 +1,104 @@
+# ============================================================
+# values.yaml - team-signaling
+# Eigenständiger Signaling-Server für Nextcloud Talk
+# ============================================================
+
+app:
+  # Subdomain des Signaling-Servers.
+  # Ergibt zusammen mit domain die vollständige URL:
+  # z.B. talk + twscomputer.de → talk.twscomputer.de
+  name: talk
+  domain: example.com
+
+  # Image Pull Policy für ALLE Container dieses Charts.
+  # IfNotPresent: Images nur ziehen wenn nicht lokal vorhanden (Produktion)
+  # Always:       Bei jedem Pod-Start nach Updates suchen (nur Testing)
+  # Never:        Niemals ziehen (Air-Gap-Installationen)
+  pullPolicy: IfNotPresent
+
+# ============================================================
+# Signaling-Server (strukturag/nextcloud-spreed-signaling)
+# ============================================================
+signaling:
+  # Image-Tag festschreiben um unerwartete Updates zu vermeiden!
+  # Aktuelle Versionen: https://hub.docker.com/r/strukturag/nextcloud-spreed-signaling/tags
+  imageTag: "latest"
+
+  # Maximale Bitrate pro Video-Stream in Bit/s
+  # 0 = unbegrenzt (Janus entscheidet automatisch via Simulcast)
+  # Beispiel: 1000000 = 1 Mbit/s
+  maxStreamBitrate: "0"
+
+  # Maximale Bitrate für Screensharing in Bit/s
+  # Screensharing benötigt meist mehr Bandbreite als Video
+  # Beispiel: 2000000 = 2 Mbit/s
+  maxScreenBitrate: "0"
+
+# ============================================================
+# Janus WebRTC MCU
+# ============================================================
+janus:
+  # Image-Tag festschreiben
+  # Aktuelle Versionen: https://hub.docker.com/r/schklom/nextcloud-janus-strukturag/tags
+  imageTag: "latest"
+
+# ============================================================
+# TURN/STUN-Server (coturn)
+# ============================================================
+coturn:
+  # Image-Tag festschreiben
+  # Aktuelle Versionen: https://hub.docker.com/r/coturn/coturn/tags
+  imageTag: "latest"
+
+# ============================================================
+# Secrets
+# Alle Werte generieren mit: openssl rand --hex 32
+# ============================================================
+secrets:
+  # turnSecret:
+  #   Wird in jeder Nextcloud-Instanz unter
+  #   Einstellungen → Talk → TURN-Server als "Secret" eingetragen.
+  turnSecret: "<TURN_SECRET>"
+
+  # internalSecret:
+  #   Interne Kommunikation zwischen Signaling-Server und Nextcloud-Backends.
+  #   Wird NICHT in Nextcloud eingetragen.
+  internalSecret: "<INTERNAL_SECRET>"
+
+  # turnApiKey:
+  #   API-Key für die TURN-Credentials-API des Signaling-Servers.
+  #   Pflichtfeld wenn TURN-Server konfiguriert ist!
+  #   Generieren mit: openssl rand --hex 16
+  #   Wird NICHT in Nextcloud eingetragen.
+  turnApiKey: "<TURN_API_KEY_32_CHARS>"
+  #   Interne Schlüssel des Signaling-Servers für Session-Verschlüsselung.
+  #   Werden NICHT in Nextcloud eingetragen.
+  #   WICHTIG: Exakt 32 Zeichen! Generieren mit: openssl rand --hex 16
+  #   (nicht --hex 32 - das gibt 64 Zeichen und führt zu einem Startfehler!)
+  sessionHashKey: "<SESSION_HASH_KEY_32_CHARS>"
+  sessionBlockKey: "<SESSION_BLOCK_KEY_32_CHARS>"
+
+# ============================================================
+# Nextcloud-Backends
+# Liste der Nextcloud-Instanzen die diesen Signaling-Server nutzen.
+# Beliebig viele Einträge möglich.
+# ============================================================
+backends:
+  # Jedes Backend hat einen eigenen internen Namen und ein eigenes Secret.
+  #
+  # name:   Interner Bezeichner für die server.conf (nur Buchstaben/Zahlen/Bindestrich)
+  #         Ist nach außen nicht sichtbar, muss nur innerhalb dieser Liste eindeutig sein.
+  #
+  # url:    Vollständige HTTPS-URL der Nextcloud-Instanz
+  #
+  # secret: Individuelles Secret pro Backend - generieren mit: openssl rand --hex 32
+  #         Dieses Secret muss in der jeweiligen Nextcloud-Instanz unter
+  #         Einstellungen → Talk → Hochleistungs-Backend als "Shared Secret" eingetragen werden.
+  #         Jede Nextcloud-Instanz hat ihr eigenes Secret - das ist bewusst so:
+  #         Bei Kündigung eines Kunden nur dessen Secret ändern, andere unberührt.
+  - name: instanz1
+    url: https://cloud.example.com
+    secret: "<SECRET_INSTANZ1>"
+  # - name: instanz2
+  #   url: https://cloud2.example.com
+  #   secret: "<SECRET_INSTANZ2>"

@@ -1,0 +1,97 @@
+# ============================================================
+# LibreSign Setup-Job
+# ============================================================
+# Dieser Job läuft einmalig nach helm install/upgrade und:
+#   1. Installiert die LibreSign Nextcloud-App
+#   2. Lädt alle Abhängigkeiten (Java JRE, JSignPDF, CFSSL)
+#   3. Erstellt eine selbstsignierte Root-CA
+#   4. Konfiguriert LibreSign
+#
+# Der PVC der Nextcloud-Instanz wird automatisch ermittelt –
+# kein manueller Eintrag in values.yaml nötig.
+# Voraussetzung: Der PVC-Name enthält "nc-data" (Teamserver-Konvention).
+# ============================================================
+{{- $pvcName := "" }}
+{{- $pvcs := lookup "v1" "PersistentVolumeClaim" "default" "" }}
+{{- if $pvcs }}
+  {{- range $pvcs.items }}
+    {{- if contains "nc-data" .metadata.name }}
+      {{- $pvcName = .metadata.name }}
+    {{- end }}
+  {{- end }}
+{{- end }}
+{{- if not $pvcName }}
+  {{- fail "Kein Nextcloud-PVC gefunden! Läuft team-nextcloud im Namespace 'default'?" }}
+{{- end }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "team-libresign.fullname" . }}-setup
+  namespace: default
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "5"
+    "helm.sh/hook-delete-policy": hook-succeeded
+spec:
+  backoffLimit: 3
+  template:
+    spec:
+      volumes:
+        - name: nc-data-vol
+          persistentVolumeClaim:
+            # Automatisch ermittelter PVC-Name (via Helm lookup)
+            claimName: {{ $pvcName }}
+      restartPolicy: OnFailure
+      containers:
+        - name: libresign-setup
+          image: nextcloud:stable
+          imagePullPolicy: IfNotPresent
+          volumeMounts:
+            - name: nc-data-vol
+              mountPath: /var/www/html
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -e
+
+              echo "Verwende Nextcloud-PVC: {{ $pvcName }}"
+
+              # Warten bis Nextcloud vollständig installiert ist
+              echo "Warte auf Nextcloud..."
+              until php /var/www/html/occ status 2>/dev/null | grep -q "installed: true"; do
+                sleep 10
+              done
+              echo "Nextcloud bereit."
+
+              # LibreSign App installieren falls nicht vorhanden
+              if ! su -s /bin/bash www-data -c \
+                "php /var/www/html/occ app:list --enabled" | grep -q "libresign"; then
+                echo "Installiere LibreSign App..."
+                su -s /bin/bash www-data -c \
+                  "php /var/www/html/occ app:install libresign"
+              else
+                echo "LibreSign bereits installiert."
+              fi
+
+              # Abhängigkeiten laden (Java JRE, JSignPDF, CFSSL)
+              echo "Lade LibreSign Abhängigkeiten (Java, JSignPDF, CFSSL)..."
+              su -s /bin/bash www-data -c \
+                "php /var/www/html/occ libresign:install --all"
+
+              # Root-CA erstellen falls noch nicht vorhanden
+              if ! su -s /bin/bash www-data -c \
+                "php /var/www/html/occ libresign:configure:cfssl --show" \
+                2>/dev/null | grep -q "CN"; then
+                echo "Erstelle Root-CA..."
+                su -s /bin/bash www-data -c \
+                  "php /var/www/html/occ libresign:configure:cfssl \
+                  --cn='{{ .Values.ca.commonName }}' \
+                  --o='{{ .Values.ca.organization }}' \
+                  --ou='{{ .Values.ca.organizationalUnit }}' \
+                  --c='{{ .Values.ca.country }}'"
+              else
+                echo "Root-CA bereits vorhanden, überspringe."
+              fi
+
+              echo "LibreSign Setup abgeschlossen!"

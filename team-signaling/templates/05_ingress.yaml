@@ -1,0 +1,35 @@
+---
+# StripPrefix-Middleware für Signaling-Server:
+# Nextcloud Talk sendet Anfragen an /standalone-signaling/...
+# Der Signaling-Server erwartet sie direkt auf /
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: signaling-strip-prefix
+  namespace: default
+spec:
+  stripPrefix:
+    prefixes:
+      - /standalone-signaling
+---
+# Signaling-Server IngressRoute
+# Traefik übernimmt SSL und leitet WebSocket-Traffic weiter
+# Für Traefik v3: apiVersion: traefik.io/v1alpha1
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: ingressroute-{{ include "team-signaling.fullname" . }}
+  namespace: default
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`{{ .Values.app.name }}.{{ .Values.app.domain }}`) && PathPrefix(`/standalone-signaling`)
+      kind: Rule
+      middlewares:
+        - name: signaling-strip-prefix
+      services:
+        - name: {{ include "team-signaling.fullname" . }}-signaling
+          port: 8080
+  tls:
+    certResolver: default

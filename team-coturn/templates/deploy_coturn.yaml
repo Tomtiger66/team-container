@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: team-coturn
+  namespace: default
+  labels:
+    app: team-coturn
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: team-coturn
+  template:
+    metadata:
+      labels:
+        app: team-coturn
+    spec:
+      hostNetwork: true
+      containers:
+        - name: coturn
+          image: coturn/coturn:latest
+          imagePullPolicy: Always
+          command: ["turnserver"]
+          args:
+            - "-a"
+            - "-v"
+            - "--listening-port=3478"
+            - "--listening-ip=0.0.0.0"   # NEU: Erzwingt Bindung an alle IPs (auch die öffentliche!)
+            - "--no-tls"                 # NEU: Deaktiviert die Zertifikats-Suche für TLS
+            - "--no-dtls"                # NEU: Deaktiviert die Zertifikats-Suche für DTLS
+            - "--use-auth-secret"
+            - "--static-auth-secret={{ .Values.coturn.staticAuthSecret }}"
+            - "--realm={{ .Values.app.name }}.{{ .Values.app.domain }}"
+            - "--fingerprint"
+            - "--lt-cred-mech"
+          ports:
+            - containerPort: 3478
+              protocol: UDP
+            - containerPort: 3478
+              protocol: TCP

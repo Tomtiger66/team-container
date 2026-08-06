@@ -1,0 +1,49 @@
+# ============================================================
+# Janus WebRTC Gateway (MCU)
+# ============================================================
+# Aufgabe: Multipoint Control Unit
+#   - Empfängt einen Stream pro Teilnehmer
+#   - Verteilt Streams serverseitig (kein quadratischer Upload!)
+#   - Simulcast: sendet jedem Empfänger optimale Qualitätsstufe
+# Port 8188: WebSocket (nur intern, kein Ingress!)
+#
+# Faustregel: Ab 4 Teilnehmern sinnvoll, ab 10 unverzichtbar.
+# ============================================================
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  namespace: default
+  name: {{ include "team-signaling.fullname" . }}-janus
+  labels:
+    app: {{ include "team-signaling.fullname" . }}-janus
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ include "team-signaling.fullname" . }}-janus
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: {{ include "team-signaling.fullname" . }}-janus
+      annotations:
+        timestamp: "{{ now | unixEpoch }}"
+    spec:
+      containers:
+        - name: janus
+          image: strukturag/janus-hpb:{{ .Values.janus.imageTag }}
+          imagePullPolicy: {{ .Values.app.pullPolicy }}
+          ports:
+            # Nur intern erreichbar - kein Ingress, kein hostPort
+            - containerPort: 8188
+              name: janus-ws
+              protocol: TCP
+          # Janus benötigt MKNOD für interne Sandbox-Prozesse
+          securityContext:
+            capabilities:
+              add:
+                - MKNOD
+          env:
+            - name: TZ
+              value: Europe/Berlin

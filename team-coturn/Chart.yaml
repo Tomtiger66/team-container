@@ -1,0 +1,7 @@
+apiVersion: v2
+name: team-coturn
+description: Coturn STUN/TURN Server fuer Nextcloud Talk im c't Team-Container
+type: application
+version: 1.0.0
+appVersion: 4.6.2
+

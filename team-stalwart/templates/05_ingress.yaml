@@ -1,0 +1,21 @@
+---
+# Web-Admin IngressRoute
+# Traefik übernimmt SSL für das Admin-Interface
+# Mail-Ports (SMTP/IMAP) haben keinen Ingress - laufen über hostPort
+# Für Traefik v3: apiVersion: traefik.io/v1alpha1
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: ingressroute-{{ include "team-stalwart.fullname" . }}
+  namespace: default
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`{{ .Values.app.name }}.{{ .Values.app.domain }}`)
+      kind: Rule
+      services:
+        - name: {{ include "team-stalwart.fullname" . }}-admin
+          port: 8080
+  tls:
+    certResolver: default

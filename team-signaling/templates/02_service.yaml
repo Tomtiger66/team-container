@@ -1,0 +1,31 @@
+# Signaling-Server Service (intern: Traefik → Pod)
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "team-signaling.fullname" . }}-signaling
+  namespace: default
+spec:
+  ports:
+    - name: signaling
+      port: 8080
+      targetPort: 8080
+      protocol: TCP
+  selector:
+    app: {{ include "team-signaling.fullname" . }}-signaling
+---
+# Janus MCU Service (nur intern - kein Ingress!)
+# Nur für Signaling-Server erreichbar, nicht von außen
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "team-signaling.fullname" . }}-janus
+  namespace: default
+spec:
+  ports:
+    - name: janus-ws
+      port: 8188
+      targetPort: 8188
+      protocol: TCP
+  selector:
+    app: {{ include "team-signaling.fullname" . }}-janus
+# Kein Service für coturn nötig - läuft über hostPort direkt

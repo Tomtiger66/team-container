@@ -1,0 +1,17 @@
+# ============================================================
+# Persistenter Speicher für Stalwart Mail Server
+# ============================================================
+# Speichert: Mail-Daten, Konfiguration, ACME-Zertifikate,
+#            Sieve-Skripte, Spam-Filter-Daten
+# ============================================================
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "team-stalwart.fullname" . }}-data
+  namespace: default
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.storage.size }}

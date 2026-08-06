@@ -1,0 +1,197 @@
+# ============================================================
+# Stalwart Mail Server Deployment
+# ============================================================
+# Image: stalwartlabs/stalwart
+# Enthält: SMTP, SMTPS, Submission, IMAP, IMAPS, Web-Admin
+#
+# Persistenz:
+#   Stalwart schreibt Daten (RocksDB) nach /var/lib/stalwart und
+#   Konfiguration (config.json) nach /etc/stalwart. Beide Pfade
+#   liegen auf demselben PVC (stalwart-data), die Konfiguration
+#   über subPath: etc, damit sie getrennt vom Datenbestand bleibt.
+#
+# TLS-Zertifikate:
+#   Traefik verwaltet die Let's Encrypt Zertifikate zentral.
+#   Ein traefik-certs-dumper InitContainer + Sidecar extrahiert
+#   das Zertifikat für mail.<domain> aus Traefiks acme.json und
+#   stellt es als PEM-Dateien bereit. Das Traefik-Volume wird
+#   dabei READ-ONLY gemountet - Stalwart kann acme.json nicht
+#   verändern.
+#
+#   Der Dumper läuft als root (nötig, um acme.json zu lesen),
+#   die erzeugten PEM-Dateien werden per chown auf UID/GID 2000
+#   (stalwart-User im Container) umgesetzt - sowohl beim initialen
+#   Dump (InitContainer) als auch bei jeder späteren Zertifikats-
+#   erneuerung im Watch-Modus (Sidecar, via --post-hook). Ohne
+#   diesen chown kann Stalwart den Private Key nicht lesen
+#   (Permission denied beim TLS-Reload).
+#
+# WICHTIG: Admin-Zugangsdaten beim ersten Start aus Logs lesen:
+#   kubectl logs <stalwart-pod> -c stalwart | grep -i "admin\|password"
+#
+# TLS-Einrichtung im Stalwart Web-Admin (Schieberegler-Icon unten links):
+#   1. TLS → Certificates → Add Certificate
+#      Certificate / Private Key jeweils Typ "Text value read from file":
+#        /certs/{{ .Values.app.name }}.{{ .Values.app.domain }}/certificate.crt
+#        /certs/{{ .Values.app.name }}.{{ .Values.app.domain }}/privatekey.key
+#   2. Network → General → Default Certificate auf die Domain setzen
+#   3. Actions → Reload: TLS certificates ausführen
+#
+# Zusätzlich nötig, damit mail.<domain> auf Port 443 ein gültiges
+# statt Traefiks Default-Zertifikat bekommt (Autoconfig/CalDAV/
+# CardDAV-Discovery): eigene IngressRoute für das Web-Admin-
+# Interface (siehe 05-ingress.yaml) sowie ggf. eine .well-known-
+# Weiterleitung für die nackte Domain, falls Mailadressen dort
+# liegen (siehe README, Teil 2.4).
+# ============================================================
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  namespace: default
+  name: {{ include "team-stalwart.fullname" . }}
+  labels:
+    app: {{ include "team-stalwart.fullname" . }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ include "team-stalwart.fullname" . }}
+  # Recreate statt RollingUpdate - nur eine Instanz darf gleichzeitig
+  # auf die Mail-Daten zugreifen (ReadWriteOnce PVC)
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: {{ include "team-stalwart.fullname" . }}
+      annotations:
+        timestamp: "{{ now | unixEpoch }}"
+    spec:
+      volumes:
+        # Persistenter Speicher für Mail-Daten und Konfiguration
+        - name: stalwart-data
+          persistentVolumeClaim:
+            claimName: {{ include "team-stalwart.fullname" . }}-data
+        # Traefik-Zertifikate - READ-ONLY gemountet!
+        # Stalwart kann acme.json nicht verändern.
+        - name: traefik-certs
+          persistentVolumeClaim:
+            claimName: traefik-cert
+            readOnly: true
+        # Temporärer Speicher für extrahierte PEM-Dateien
+        # Nur innerhalb dieses Pods sichtbar, flüchtig
+        - name: cert-pem
+          emptyDir: {}
+
+      initContainers:
+        # Einmaliger Init-Container: Zertifikat beim Pod-Start extrahieren
+        # chown am Ende, damit der stalwart-Container (UID 2000) den
+        # Private Key lesen kann - siehe Hinweis im Dateikopf.
+        - name: cert-dumper-init
+          image: ldez/traefik-certs-dumper:{{ .Values.certDumper.imageTag }}
+          imagePullPolicy: {{ .Values.app.pullPolicy }}
+          command:
+            - /bin/sh
+            - -c
+            - |
+              traefik-certs-dumper file \
+                --version v2 \
+                --source /traefik-certs/acme.json \
+                --dest /certs \
+                --domain-subdir \
+                --crt-name certificate \
+                --key-name privatekey && \
+              chown -R 2000:2000 /certs
+          volumeMounts:
+            - name: traefik-certs
+              mountPath: /traefik-certs
+              readOnly: true
+            - name: cert-pem
+              mountPath: /certs
+
+      containers:
+        # --------------------------------------------------------
+        # Sidecar: traefik-certs-dumper im Watch-Modus
+        # Erkennt Zertifikatserneuerungen automatisch und
+        # aktualisiert die PEM-Dateien ohne Pod-Neustart.
+        # --post-hook stellt sicher, dass nach jeder Erneuerung
+        # die Rechte für den stalwart-User (UID 2000) korrigiert
+        # werden.
+        # --------------------------------------------------------
+        - name: cert-dumper
+          image: ldez/traefik-certs-dumper:{{ .Values.certDumper.imageTag }}
+          imagePullPolicy: {{ .Values.app.pullPolicy }}
+          command:
+            - traefik-certs-dumper
+            - file
+            - --version
+            - v2
+            - --source
+            - /traefik-certs/acme.json
+            - --dest
+            - /certs
+            - --domain-subdir
+            - --crt-name
+            - certificate
+            - --key-name
+            - privatekey
+            - --watch
+            - --post-hook
+            - "chown -R 2000:2000 /certs"
+          volumeMounts:
+            - name: traefik-certs
+              mountPath: /traefik-certs
+              readOnly: true
+            - name: cert-pem
+              mountPath: /certs
+
+        # --------------------------------------------------------
+        # Stalwart Mail Server
+        # --------------------------------------------------------
+        - name: stalwart
+          image: stalwartlabs/stalwart:{{ .Values.image.tag }}
+          imagePullPolicy: {{ .Values.app.pullPolicy }}
+          volumeMounts:
+            - name: stalwart-data
+              mountPath: /var/lib/stalwart
+            - name: stalwart-data
+              mountPath: /etc/stalwart
+              subPath: etc
+            - name: cert-pem
+              mountPath: /certs
+              readOnly: true
+          ports:
+            # Web-Admin-Interface und JMAP
+            # Wird über Traefik nach außen geleitet (HTTPS)
+            - containerPort: 8080
+              name: admin
+              protocol: TCP
+            # Mail-Ports direkt über hostPort –
+            # Raw TCP/SMTP/IMAP kann nicht über Traefik geroutet werden
+            - containerPort: 25
+              hostPort: 25
+              name: smtp
+              protocol: TCP
+            - containerPort: 465
+              hostPort: 465
+              name: smtps
+              protocol: TCP
+            - containerPort: 587
+              hostPort: 587
+              name: submission
+              protocol: TCP
+            - containerPort: 143
+              hostPort: 143
+              name: imap
+              protocol: TCP
+            - containerPort: 993
+              hostPort: 993
+              name: imaps
+              protocol: TCP
+          env:
+            - name: TZ
+              value: Europe/Berlin
+            {{- if .Values.recovery.enabled }}
+            - name: STALWART_RECOVERY_ADMIN
+              value: "{{ .Values.recovery.username }}:{{ .Values.recovery.password }}"
+            {{- end }}

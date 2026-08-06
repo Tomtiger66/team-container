@@ -1,0 +1,16 @@
+app:
+  name: rust
+  domain: example.com
+
+  # imagePullPolicy steuert das Update-Verhalten des RustDesk-Server-Images.
+  #
+  # "IfNotPresent" – empfohlen für den Normalbetrieb.
+  #                  Verwendet das lokal gecachte Image; kein ungewolltes Upgrade
+  #                  beim Pod-Neustart. Verhindert Key-Änderungen durch neue Images.
+  #
+  # "Always"       – bei jedem Pod-Neustart wird Docker Hub auf ein neues "latest"
+  #                  geprüft und ggf. gezogen (Sicherheitsupdates, Client-Kompatibilität).
+  #                  ACHTUNG: Nach einem tatsächlichen Image-Wechsel muss der
+  #                  Security-String in allen RustDesk-Clients neu eingetragen werden,
+  #                  falls die neue Version den Key neu generiert.
+  imagePullPolicy: IfNotPresent

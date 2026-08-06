@@ -26,7 +26,7 @@ spec:
            claimName: {{ include "team-nextcloud.fullname" . }}-nc-db
       containers:
         - name: {{ include "team-nextcloud.fullname" . }}-db
-          image: mariadb
+          image: mariadb:11.8
           imagePullPolicy: Always
           volumeMounts:
            - name: team-db-vol

@@ -1,0 +1,52 @@
+# Konfigurationsdatei für den Signaling-Server
+# Wird als ConfigMap bereitgestellt und in den Container gemountet
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "team-signaling.fullname" . }}-config
+  namespace: default
+data:
+  server.conf: |
+    [http]
+    listen = 0.0.0.0:8080
+
+    [app]
+    debug = false
+    # Session-Timeout für inaktive Verbindungen
+    sessionTimeout = 12h
+
+    [sessions]
+    # Generieren mit: openssl rand --hex 32
+    hashKey = {{ .Values.secrets.sessionHashKey }}
+    blockKey = {{ .Values.secrets.sessionBlockKey }}
+
+    [clients]
+    internalsecret = {{ .Values.secrets.internalSecret }}
+
+    [backend]
+    allowall = false
+    backends = {{ range $i, $b := .Values.backends }}{{ if $i }},{{ end }}{{ $b.name }}{{ end }}
+{{- range .Values.backends }}
+
+    [{{ .name }}]
+    url = {{ .url }}
+    secret = {{ .secret }}
+{{- end }}
+
+    [nats]
+    # Eingebauter NATS-Server - kein separater Pod nötig
+    url = nats://loopback
+
+    [mcu]
+    # Janus WebRTC MCU - intern über Kubernetes-Service erreichbar
+    # WICHTIG: USE_JANUS=1 muss im Deployment gesetzt sein!
+    type = janus
+    url = ws://{{ include "team-signaling.fullname" . }}-janus:8188
+
+    [turn]
+    # TURN-Server für Clients hinter restriktiven Firewalls
+    servers = turn:{{ .Values.app.name }}.{{ .Values.app.domain }}:3478?transport=udp,turn:{{ .Values.app.name }}.{{ .Values.app.domain }}:3478?transport=tcp
+    secret = {{ .Values.secrets.turnSecret }}
+    # API-Key für TURN-Credentials-API (Pflichtfeld wenn servers gesetzt!)
+    # Generieren mit: openssl rand --hex 16
+    apiKey = {{ .Values.secrets.turnApiKey }}

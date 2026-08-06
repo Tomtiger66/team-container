@@ -23,3 +23,40 @@ spec:
           port: 80
       middlewares:
         - name: global-redirect-http
+---
+# Well-Known CalDAV/CardDAV Redirect zu Stalwart
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: stalwart-service-discovery
+  namespace: default
+spec:
+  redirectRegex:
+    permanent: true
+    regex: ^https://twscomputer\.de/\.well-known/(card|cal)dav
+    replacement: https://mail.twscomputer.de/.well-known/${1}dav
+---
+# HTTPS IngressRoute für die nackte Domain twscomputer.de
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: ingressroute-twscomputer-websecure
+  namespace: default
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`twscomputer.de`) && PathPrefix(`/.well-known/`)
+      kind: Rule
+      middlewares:
+        - name: stalwart-service-discovery
+      services:
+        - name: landingpage
+          port: 80
+    - match: Host(`twscomputer.de`)
+      kind: Rule
+      services:
+        - name: landingpage
+          port: 80
+  tls:
+    certResolver: default

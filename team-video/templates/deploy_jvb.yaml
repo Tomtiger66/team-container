@@ -59,9 +59,11 @@ spec:
           {{else}}
             value: stun.l.google.com:19302,stun1.l.google.com:19302,stun2.l.google.com:19302
           {{end}}
-          {{ if hasKey .Values "jvbTrustBwe" }}
-          - name: VIDEOBRIDGE_DEBUG_OPTIONS
-            value: "-Dvideobridge.cc.trust-bwe={{ .Values.jvbTrustBwe }}"
-          {{ end }}
           - name: TZ
             value: Europe/Paris
+
+          # === OPTIONALE VIDEOBRIDGE-OPTIONEN ===
+          {{- if hasKey .Values "jvbTrustBwe" }}
+          - name: VIDEOBRIDGE_DEBUG_OPTIONS
+            value: "-Dvideobridge.cc.trust-bwe={{ .Values.jvbTrustBwe }}"
+          {{- end }}

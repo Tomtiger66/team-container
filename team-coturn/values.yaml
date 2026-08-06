@@ -1,0 +1,8 @@
+# team-coturn/values.yaml
+app:
+  name: turn
+  domain: example.com
+
+coturn:
+  staticAuthSecret: "AendernMichInDerValuesDateilimStammordner123!"
+

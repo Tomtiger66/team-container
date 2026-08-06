@@ -1,0 +1,28 @@
+# ============================================================
+# values.yaml - team-libresign
+# LibreSign PDF-Digitalsignaturen für Nextcloud
+# ============================================================
+#
+# LibreSign benötigt KEINEN separaten Pod – alle Komponenten
+# (Java JRE, JSignPDF, CFSSL) werden automatisch heruntergeladen
+# und im Nextcloud-Datenverzeichnis gespeichert.
+#
+# Der Nextcloud-PVC wird automatisch ermittelt –
+# kein manueller Eintrag nötig (Teamserver-Konvention).
+#
+# Für rechtsgültige Signaturen nach eIDAS: Eigene qualifizierte
+# Zertifikate einer akkreditierten CA manuell einbinden.
+# Siehe: LIBRESIGN_DOKUMENTATION.md
+
+# ============================================================
+# CA-Konfiguration für selbstsignierte Zertifikate
+# ============================================================
+ca:
+  # Anzeigename der CA (erscheint in signierten Dokumenten)
+  commonName: "LibreSign CA"
+  # Organisation
+  organization: "Meine Organisation"
+  # Organisationseinheit
+  organizationalUnit: "IT"
+  # Ländercode (2 Buchstaben, ISO 3166-1 alpha-2)
+  country: "DE"

@@ -1,0 +1,15 @@
+apiVersion: v2
+name: team-signaling
+description: |
+  Eigenständiger Hochleistungs-Signaling-Server für Nextcloud Talk.
+  Besteht aus drei Komponenten:
+    - strukturag/nextcloud-spreed-signaling (Signaling-Server)
+    - schklom/nextcloud-janus-strukturag (Janus WebRTC MCU)
+    - coturn/coturn (TURN/STUN-Server)
+  Unterstützt beliebig viele Nextcloud-Instanzen als Backends.
+  Empfohlen für Hosting-Anbieter und Umgebungen mit mehreren
+  Nextcloud-Instanzen oder großen Videokonferenzen (10+ Teilnehmer).
+
+type: application
+version: 0.1.0
+appVersion: 0.1.0

@@ -30,6 +30,12 @@ spec:
          volumeMounts:
            - name: nc-data-vol
              mountPath: "/var/www/html"
+         env:
+           - name: PHP_OPCACHE_MEMORY_CONSUMPTION
+             value: "256"
+           - name: PHP_OPCACHE_INTERNED_STRINGS_BUFFER
+             value: "32"
+
        - name: web
          image: nextcloud:stable
          imagePullPolicy: Always
@@ -58,5 +64,113 @@ spec:
             value: {{ .Values.admin.password }}
           - name: APACHE_DISABLE_REWRITE_IP
             value: "1"
+          # WICHTIG: Leerzeichen als Trennzeichen, KEIN Komma!
+          # IPv6-Loopback (::1) muss explizit angegeben werden.
           - name: TRUSTED_PROXIES
-            value: "10.0.0.0/8"
+            value: "10.0.0.0/8 127.0.0.1 ::1"
+          - name: PHP_OPCACHE_MEMORY_CONSUMPTION
+            value: "256"
+          - name: PHP_OPCACHE_INTERNED_STRINGS_BUFFER
+            value: "32"
+         lifecycle:
+           postStart:
+             exec:
+               command:
+                 - /bin/bash
+                 - -c
+                 - |
+                   until php /var/www/html/occ status 2>/dev/null | grep -q "installed: true"; do
+                     sleep 5
+                   done
+
+                   # notify_push App automatisch installieren falls noch nicht vorhanden
+                   if ! su -s /bin/bash www-data -c "php /var/www/html/occ app:list" | grep -q "notify_push"; then
+                     echo "Installiere notify_push App..."
+                     su -s /bin/bash www-data -c "php /var/www/html/occ app:install notify_push"
+                   fi
+
+                   # Push-Endpunkt bei Nextcloud eintragen
+                   su -s /bin/bash www-data -c \
+                     "php /var/www/html/occ notify_push:setup \
+                     https://{{ .Values.app.name }}.{{ .Values.app.domain }}/push" \
+                     || echo "notify_push:setup fehlgeschlagen - beim naechsten Deploy erneut versuchen"
+
+{{- if .Values.talk.signalingAllowedDomains }}
+                   # CSP für externe Signaling-Domains setzen
+                   php /var/www/html/occ config:app:set spreed \
+                     talk_content_security_policy_allowed_domains \
+                     --value='{{ .Values.talk.signalingAllowedDomains | toJson }}'
+{{- end }}
+
+       # ============================================================
+       # Client-Push (notify_push)
+       # ============================================================
+       # Ermöglicht sofortige Push-Benachrichtigungen für Desktop-
+       # und Mobile-Clients statt verzögertem Polling.
+       #
+       # Das Binary liegt im geteilten nc-data-vol Volume.
+       # Falls es fehlt (App-Store liefert es nicht mehr mit),
+       # wird es automatisch von GitHub geladen.
+       #
+       # NEXTCLOUD_URL = http://localhost (nicht öffentliche Domain!)
+       # Grund: Push-Server und Web-Container teilen denselben
+       # Pod-Netzwerk-Namespace. Der Umweg über Traefik würde den
+       # X-Forwarded-For-Header durch Hairpin-NAT korrumpieren.
+       # ============================================================
+       - name: push
+         image: nextcloud:stable
+         imagePullPolicy: Always
+         command:
+           - /bin/sh
+           - -c
+           - |
+             ARCH=$(uname -m)
+             BIN_DIR="/var/www/html/apps/notify_push/bin/${ARCH}"
+             BIN="${BIN_DIR}/notify_push"
+
+             # Warten bis Nextcloud initialisiert ist
+             until [ -f /var/www/html/config/config.php ]; do
+               echo "Warte auf Nextcloud config.php..."
+               sleep 5
+             done
+
+             # Binary laden falls nicht vorhanden
+             if [ ! -f "$BIN" ]; then
+               echo "notify_push Binary fehlt, lade von GitHub..."
+               mkdir -p "$BIN_DIR"
+               VERSION=$(su -s /bin/sh www-data -c \
+                 "php /var/www/html/occ config:app:get notify_push installed_version" 2>/dev/null)
+               if [ -n "$VERSION" ]; then
+                 URL="https://github.com/nextcloud/notify_push/releases/download/v${VERSION}/notify_push-${ARCH}-unknown-linux-musl"
+               else
+                 URL="https://github.com/nextcloud/notify_push/releases/latest/download/notify_push-${ARCH}-unknown-linux-musl"
+               fi
+               until curl -fsSL -o "$BIN" "$URL"; do
+                 echo "Download fehlgeschlagen, Wiederholung in 10s..."
+                 sleep 10
+               done
+               chmod +x "$BIN"
+               echo "Binary geladen: $BIN"
+             fi
+
+             exec "$BIN" /var/www/html/config/config.php
+         volumeMounts:
+           - name: nc-data-vol
+             mountPath: "/var/www/html"
+         ports:
+           - name: push
+             containerPort: 7867
+         env:
+           # http://localhost statt öffentlicher Domain - Hairpin-NAT-Fix!
+           - name: NEXTCLOUD_URL
+             value: "http://localhost"
+           - name: REDIS_HOST
+             value: {{ include "team-nextcloud.fullname" . }}-redis
+           - name: MYSQL_HOST
+             value: {{ include "team-nextcloud.fullname" . }}-db
+           - name: MYSQL_DATABASE
+             value: nextcloud
+           - name: MYSQL_USER
+             value: nextcloud
+           - name: MYSQL_PASSWORD
+             value: {{ .Values.database.password }}

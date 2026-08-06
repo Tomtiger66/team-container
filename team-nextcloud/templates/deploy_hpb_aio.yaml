@@ -1,0 +1,67 @@
+# ============================================================
+# HPB AIO (All-in-One) - Optional
+# ============================================================
+# Aktivieren in values-nextcloud.yaml: hpb.enabled: true
+#
+# Image: ghcr.io/nextcloud-releases/aio-talk
+# Enthält: Signaling + Janus MCU + eturnal TURN/STUN
+# Geeignet für: Einzelne Nextcloud-Domain, kleine Server
+# RAM: ~130 MB im Leerlauf
+# Einschränkung: Nur EINE Nextcloud-Domain
+#
+# Für mehrere Domains → team-signaling Chart verwenden
+# ============================================================
+{{- if .Values.hpb.enabled }}
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  namespace: default
+  name: {{ include "team-nextcloud.fullname" . }}-hpb
+  labels:
+    app: {{ include "team-nextcloud.fullname" . }}-hpb
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ include "team-nextcloud.fullname" . }}-hpb
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: {{ include "team-nextcloud.fullname" . }}-hpb
+      annotations:
+        timestamp: "{{ now | unixEpoch }}"
+    spec:
+      containers:
+        - name: hpb
+          image: ghcr.io/nextcloud-releases/aio-talk:{{ .Values.hpb.imageTag }}
+          imagePullPolicy: {{ .Values.hpb.pullPolicy }}
+          ports:
+            - containerPort: 8081
+              name: signaling
+              protocol: TCP
+            - containerPort: 3478
+              hostPort: 3478
+              name: turn-tcp
+              protocol: TCP
+            - containerPort: 3478
+              hostPort: 3478
+              name: turn-udp
+              protocol: UDP
+          env:
+            - name: NC_DOMAIN
+              value: {{ .Values.app.name }}.{{ .Values.app.domain }}
+            - name: TALK_HOST
+              value: {{ .Values.hpb.subdomain }}.{{ .Values.app.domain }}
+            - name: TALK_PORT
+              value: "3478"
+            - name: TURN_SECRET
+              value: {{ .Values.hpb.turnSecret }}
+            - name: SIGNALING_SECRET
+              value: {{ .Values.hpb.signalingSecret }}
+            - name: INTERNAL_SECRET
+              value: {{ .Values.hpb.internalSecret }}
+            - name: TZ
+              value: Europe/Berlin
+{{- end }}

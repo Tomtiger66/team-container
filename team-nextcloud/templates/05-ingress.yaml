@@ -8,7 +8,6 @@ spec:
     permanent: true
     regex: /.well-known/(card|cal)dav
     replacement: /remote.php/dav/
-
 ---
 apiVersion: traefik.io/v1alpha1
 kind: Middleware
@@ -18,7 +17,6 @@ spec:
   headers:
     stsSeconds: 15552000
     stsIncludeSubdomains: true
-
 ---
 apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
@@ -39,3 +37,72 @@ spec:
         - name: nextcloud-headers
   tls:
     certResolver: default
+---
+# Client-Push IngressRoute
+# Leitet /push an den notify_push-Container weiter
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: ingressroute-{{ include "team-nextcloud.fullname" . }}-push
+  namespace: default
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`{{ .Values.app.name }}.{{ .Values.app.domain }}`) && PathPrefix(`/push`)
+      kind: Rule
+      services:
+        - name: {{ include "team-nextcloud.fullname" . }}-push
+          port: 7867
+  tls:
+    certResolver: default
+---
+# Collabora Online IngressRoute
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: ingressroute-{{ include "team-nextcloud.fullname" . }}-collabora
+  namespace: default
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`{{ .Values.collabora.subdomain }}.{{ .Values.app.domain }}`)
+      kind: Rule
+      services:
+        - name: {{ include "team-nextcloud.fullname" . }}-collabora
+          port: 9980
+  tls:
+    certResolver: default
+---
+# AIO HPB IngressRoute - nur aktiv wenn hpb.enabled: true
+{{- if .Values.hpb.enabled }}
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: hpb-strip-prefix
+  namespace: default
+spec:
+  stripPrefix:
+    prefixes:
+      - /standalone-signaling
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: ingressroute-{{ include "team-nextcloud.fullname" . }}-hpb
+  namespace: default
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`{{ .Values.hpb.subdomain }}.{{ .Values.app.domain }}`) && PathPrefix(`/standalone-signaling`)
+      kind: Rule
+      middlewares:
+        - name: hpb-strip-prefix
+      services:
+        - name: {{ include "team-nextcloud.fullname" . }}-hpb
+          port: 8081
+  tls:
+    certResolver: default
+{{- end }}

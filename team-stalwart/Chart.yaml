@@ -1,0 +1,10 @@
+apiVersion: v2
+name: team-stalwart
+description: |
+  Stalwart Mail Server - Moderner All-in-One-Mailserver in Rust.
+  Unterstützt SMTP, IMAP, JMAP und WebAdmin in einem einzigen Container.
+  Konfiguration erfolgt vollständig über das Web-Admin-Interface.
+
+type: application
+version: 0.1.0
+appVersion: 0.1.0

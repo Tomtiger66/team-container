@@ -1,0 +1,52 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: team-rust
+  namespace: default
+  labels:
+    app: team-rust
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: team-rust
+  template:
+    metadata:
+      labels:
+        app: team-rust
+    spec:
+      hostNetwork: true
+      volumes:
+        - name: rustdesk-data
+          persistentVolumeClaim:
+            claimName: rustdesk-storage
+      containers:
+        - name: hbbs
+          image: rustdesk/rustdesk-server:latest
+          imagePullPolicy: {{ .Values.app.imagePullPolicy }}
+          command: ["hbbs"]
+          args: ["-r", "{{ .Values.app.name }}.{{ .Values.app.domain }}:31117", "-p", "31116"]
+          volumeMounts:
+            - name: rustdesk-data
+              mountPath: /root
+          ports:
+            - containerPort: 31115
+              protocol: TCP
+            - containerPort: 31116
+              protocol: TCP
+            - containerPort: 31116
+              protocol: UDP
+
+        - name: hbbr
+          image: rustdesk/rustdesk-server:latest
+          imagePullPolicy: {{ .Values.app.imagePullPolicy }}
+          command: ["hbbr"]
+          args: ["-p", "31117", "-k", "_"]
+          volumeMounts:
+            - name: rustdesk-data
+              mountPath: /root
+          ports:
+            - containerPort: 31117
+              protocol: TCP
+            - containerPort: 31119
+              protocol: TCP

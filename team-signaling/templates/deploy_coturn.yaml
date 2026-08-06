@@ -1,0 +1,56 @@
+# ============================================================
+# coturn TURN/STUN-Server
+# ============================================================
+# Aufgabe: NAT-Traversal für Teilnehmer hinter Firewalls
+#   - STUN: Hilft Clients ihre öffentliche IP zu ermitteln
+#   - TURN: Relay-Server wenn direkte UDP-Verbindungen blockiert sind
+# Port 3478 TCP+UDP: Direkt über hostPort exponiert
+# (Raw TCP/UDP kann nicht über Traefik geroutet werden)
+#
+# Voraussetzung: Port 3478 TCP+UDP in der Firewall offen!
+# ============================================================
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  namespace: default
+  name: {{ include "team-signaling.fullname" . }}-coturn
+  labels:
+    app: {{ include "team-signaling.fullname" . }}-coturn
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ include "team-signaling.fullname" . }}-coturn
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: {{ include "team-signaling.fullname" . }}-coturn
+      annotations:
+        timestamp: "{{ now | unixEpoch }}"
+    spec:
+      containers:
+        - name: coturn
+          image: coturn/coturn:{{ .Values.coturn.imageTag }}
+          imagePullPolicy: {{ .Values.app.pullPolicy }}
+          ports:
+            - containerPort: 3478
+              hostPort: 3478
+              protocol: TCP
+            - containerPort: 3478
+              hostPort: 3478
+              protocol: UDP
+          args:
+            - --use-auth-secret
+            - --static-auth-secret={{ .Values.secrets.turnSecret }}
+            - --realm={{ .Values.app.name }}.{{ .Values.app.domain }}
+            - --listening-port=3478
+            - --min-port=49152
+            - --max-port=65535
+            - --no-tls
+            - --no-dtls
+            - --log-file=stdout
+          env:
+            - name: TZ
+              value: Europe/Berlin

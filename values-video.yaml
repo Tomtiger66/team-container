@@ -32,7 +32,6 @@ hideWelcomePage: true
 # stun:
 #  server: stun.stunprotocol.org:3478, stun.services.mozilla.com:3478
 # JVB Bandbreiten-Verhalten:
-
 # Standardmäßig (auskommentiert = Jitsi-Standardverhalten) schaltet der JVB Video
 # automatisch ab, sobald er eine zu geringe Bandbreite vermutet. Das ist sinnvoll
 # bei vielen Teilnehmern, kann aber bei Einzelunterricht/wenigen Teilnehmern stören,
@@ -40,15 +39,61 @@ hideWelcomePage: true
 # Zeile aktivieren (auskommentieren entfernen) und auf "false" setzen, um das
 # automatische Abschalten zu deaktivieren - Video bleibt dann immer an, kann aber
 # bei tatsächlich schlechter Verbindung eher ruckeln statt sich sanft anzupassen.
-# jvbTrustBwe: false
- 
-webExtraEnv:
+jvbTrustBwe: true
 
+# =====================================================================
+# MODULARE FLUSSSTEUERUNG FÜR KUNDEN & MUSIKUNTERRICHT
+# =====================================================================
+
+# BLOCK 1: Erzwingt, dass Video bei schlechter Verbindung NIE ausgeht
+# Ideal für Einzelunterricht (Musik), um die Schüler-Saiten/Hände dauerhaft zu sehen.
+forceVideoKeepAlive:
+  enabled: false
+
+# BLOCK 2: Audio-First Modus (Zuerst Framerate senken, Auflösung sichern)
+# Zwingt Jitsi bei Bandbreiteneinbrüchen, eher Bilder auszulassen (Daumenkino),
+# anstatt das Bild zu verpixeln, damit Details (Saiten) erkennbar bleiben.
+audioFirstMusicMode:
+  enabled: false
+  minHeight: "480"          # Verhindert Verpixelung unter diesen Wert
+  minFramerate: "5"         # Bildrate darf bei Einbrüchen bis auf 5 Bilder/Sek fallen
+  idealFramerate: "24"      # Ziel-Bildrate im Normalbetrieb
+  highBitrateThreshold: "500000" # Jitsi darf 720p schon ab 500kbps senden (spart Bandbreite)
+
+# BLOCK 3: Screenshare-Optimierung für Dokumente/PDFs
+# WICHTIG: Nur für statische PDFs/Pläne aktivieren. Für YouTube-Teilen auf 'false' stellen!
+optimizeScreenshareForPDF:
+  enabled: false
+  screenshareFps: "5"       # Senden & Empfangen von Plänen wird fest auf 5 fps gedrosselt
+
+# BLOCK 4: Automatische Lautstärkeangleichung (Auto-Gain-Control / AGC)
+# ACHTUNG: Wenn 'ENABLE_STEREO: "true"' aktiv ist, blockiert der Browser (WebRTC) oft AGC.
+# Über diesen Schalter können Sie versuchen, die AGC-Automatik gezielt zu steuern.
+autoGainControl:
+  enabled: true             # true = Lautstärkeangleichung aktiv, false = komplett abgeschaltet
+
+# =====================================================================
+# STANDARD WEB-UMGEBUNGSVARIABLEN (AUDIO-PROCESSING PIPELINE)
+# =====================================================================
+webExtraEnv:
+  # GLOBALER HAUPTSCHALTER: Aktiviert die WebRTC-Audioverarbeitung im Browser.
+  # Muss auf "true" stehen, damit die darunter liegenden Filter (NS, HPF) gezielt gesteuert werden können.
   - name: ENABLE_AUDIO_PROCESSING
     value: "true"
+
+  # RAUSCHUNTERDRÜCKUNG (Noise Suppression):
+  # "true" deaktiviert den Filter. Essential für Musikunterricht, da Musik sonst als Störgeräusch weggeschnitten wird.
   - name: DISABLE_NS
-    value: "true"
+    value: "false"
+
+  # HOCHPASSFILTER (High-Pass Filter):
+  # "true" deaktiviert den Filter. Verhindert, dass tiefe Frequenzen (Bass, tiefe Saiten) beschnitten werden.
   - name: DISABLE_HPF
-    value: "true"
+    value: "false"
+
+  # STEREO-ÜBERTRAGUNG (High-Quality Opus Stereo):
+  # "true" schaltet echten Stereo-Ton und hohe Bitraten frei.
+  # Hinweis: Deaktiviert im WebRTC-Standard oft die automatische Lautstärkeregelung.
   - name: ENABLE_STEREO
-    value: "true"
+    value: "false"
+

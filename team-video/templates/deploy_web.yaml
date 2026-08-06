@@ -67,7 +67,41 @@ spec:
             value: "false"
           - name: TZ
             value: Europe/Paris
-# HIER STARTET DIE ERWEITERUNG:
+
+          # === MODULARE KUNDEN-STEUERUNG (KEINE FESTEN WERTE INJEZIERT) ===
+          {{- if and .Values.forceVideoKeepAlive .Values.forceVideoKeepAlive.enabled }}
+          - name: DISABLE_SUSPEND_VIDEO
+            value: "true"
+          - name: ENABLE_LAYER_SUSPENSION
+            value: "false"
+          - name: CHANNEL_LAST_N
+            value: "-1"
+          {{- end }}
+
+          {{- if and .Values.audioFirstMusicMode .Values.audioFirstMusicMode.enabled }}
+          - name: VIDEOQUALITY_BITRATES_HIGH
+            value: {{ .Values.audioFirstMusicMode.highBitrateThreshold | quote }}
+          - name: CONFIG_CONSTRAINTS_VIDEO_FRAMERATE_MIN
+            value: {{ .Values.audioFirstMusicMode.minFramerate | quote }}
+          - name: CONFIG_CONSTRAINTS_VIDEO_FRAMERATE_IDEAL
+            value: {{ .Values.audioFirstMusicMode.idealFramerate | quote }}
+          - name: CONFIG_CONSTRAINTS_VIDEO_HEIGHT_MIN
+            value: {{ .Values.audioFirstMusicMode.minHeight | quote }}
+          {{- end }}
+
+          {{- if and .Values.optimizeScreenshareForPDF .Values.optimizeScreenshareForPDF.enabled }}
+          - name: DESKTOP_SHARING_FRAMERATE_MIN
+            value: {{ .Values.optimizeScreenshareForPDF.screenshareFps | quote }}
+          - name: DESKTOP_SHARING_FRAMERATE_MAX
+            value: {{ .Values.optimizeScreenshareForPDF.screenshareFps | quote }}
+          {{- end }}
+
+          {{- if and .Values.autoGainControl (hasKey .Values.autoGainControl "enabled") }}
+          - name: DISABLE_AGC
+            value: {{ tpl "{{ if .Values.autoGainControl.enabled }}false{{ else }}true{{ end }}" . | quote }}
+          {{- end }}
+
+          # HIER STARTET DIE ERWEITERUNG:
           {{- if .Values.webExtraEnv }}
           {{- toYaml .Values.webExtraEnv | nindent 10 }}
           {{- end }}

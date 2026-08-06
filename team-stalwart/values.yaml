@@ -1,0 +1,57 @@
+# ============================================================
+# values.yaml - team-stalwart
+# Stalwart Mail Server
+# ============================================================
+
+app:
+  # Subdomain des Mail-Servers und Web-Admin-Interfaces.
+  # Ergibt zusammen mit domain die vollständige URL:
+  # z.B. mail + example.org → mail.example.org
+  name: mail
+  domain: example.org
+
+  # Image Pull Policy für alle Container dieses Charts.
+  # IfNotPresent: empfohlen für Produktion
+  # Always:       nur für Testing
+  pullPolicy: IfNotPresent
+
+# ============================================================
+# Stalwart Mail Server Image
+# ============================================================
+image:
+  # Image-Tag festschreiben um unerwartete Updates zu vermeiden!
+  # Aktuelle Versionen: https://hub.docker.com/r/stalwartlabs/mail-server/tags
+  tag: "latest"
+
+# ============================================================
+# traefik-certs-dumper Sidecar
+# Extrahiert Zertifikate aus Traefiks acme.json als PEM-Dateien
+# Das Traefik-Volume wird READ-ONLY gemountet - keine Schreibrechte!
+# ============================================================
+certDumper:
+  # Image-Tag festschreiben
+  # Aktuelle Versionen: https://hub.docker.com/r/ldez/traefik-certs-dumper/tags
+  imageTag: "latest"
+
+# ============================================================
+# Persistenter Speicher für Mail-Daten
+# ============================================================
+storage:
+  # Größe des PersistentVolumeClaims für Mail-Daten, Konfiguration
+  # und ACME-Zertifikate. Faustregel: Anzahl Postfächer × erwartete
+  # Mailbox-Größe + 20% Reserve.
+  size: 10Gi
+
+# ============================================================
+# Firewall-Hinweis
+# ============================================================
+# Folgende Ports müssen in der Firewall freigegeben werden:
+#
+# sudo ufw allow 25/tcp   comment 'Stalwart SMTP'
+# sudo ufw allow 465/tcp  comment 'Stalwart SMTPS'
+# sudo ufw allow 587/tcp  comment 'Stalwart Submission'
+# sudo ufw allow 143/tcp  comment 'Stalwart IMAP'
+# sudo ufw allow 993/tcp  comment 'Stalwart IMAPS'
+#
+# Das Web-Admin-Interface (Port 8080) läuft über Traefik
+# auf Port 443 - kein eigener Firewall-Eintrag nötig.

@@ -1,0 +1,60 @@
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  namespace: default
+  name: {{ include "team-nextcloud.fullname" . }}-collabora
+  labels:
+    app: {{ include "team-nextcloud.fullname" . }}-collabora
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ include "team-nextcloud.fullname" . }}-collabora
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: {{ include "team-nextcloud.fullname" . }}-collabora
+      annotations:
+        timestamp: "{{ now | unixEpoch }}"
+    spec:
+      containers:
+        - name: collabora
+          # Collabora Online Development Edition (CODE)
+          # Enthält den vollständigen Collabora Online Document Server (coolwsd)
+          # Speicherverbrauch: ~200 MB Basis + 50-100 MB pro offenem Dokument
+          image: collabora/code:{{ .Values.collabora.imageTag }}
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 9980
+              name: coolwsd
+              protocol: TCP
+          # Collabora benötigt MKNOD-Capability für interne Sandbox-Prozesse
+          securityContext:
+            capabilities:
+              add:
+                - MKNOD
+          env:
+            # Erlaubte Nextcloud-Instanzen die auf diesen Collabora-Server
+            # zugreifen dürfen. Beliebig viele Instanzen möglich über
+            # aliasgroup1, aliasgroup2, aliasgroup3 usw.
+            # Konfiguration erfolgt zentral in values-nextcloud.yaml
+            {{- range $index, $url := .Values.collabora.allowedNextclouds }}
+            - name: aliasgroup{{ add $index 1 }}
+              value: {{ $url }}
+            {{- end }}
+            # Vollständige Collabora-Domain (server_name in coolwsd)
+            # Wichtig für Reverse-Proxy-Betrieb!
+            - name: server_name
+              value: {{ .Values.collabora.subdomain }}.{{ .Values.app.domain }}
+            # SSL deaktivieren da Traefik das SSL übernimmt
+            - name: DONT_GEN_SSL_CERT
+              value: "true"
+            - name: extra_params
+              value: "--o:ssl.enable=false --o:ssl.termination=true"
+            # Anzahl gleichzeitiger Dokumente (anpassen je nach RAM)
+            - name: FRM_LIMIT
+              value: "{{ .Values.collabora.maxDocuments }}"
+            - name: TZ
+              value: Europe/Berlin

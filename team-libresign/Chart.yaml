@@ -1,0 +1,11 @@
+apiVersion: v2
+name: team-libresign
+description: |
+  LibreSign CFSSL Zertifikatsserver für Nextcloud.
+  Stellt die CA-Infrastruktur für PDF-Digitalsignaturen bereit.
+  LibreSign selbst wird als Nextcloud-App installiert und lädt
+  seine Binaries (Java, JSignPDF) automatisch per OCC-Befehl.
+
+type: application
+version: 0.1.0
+appVersion: 0.1.0

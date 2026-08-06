@@ -1,0 +1,62 @@
+# ============================================================
+# Signaling-Server (strukturag/nextcloud-spreed-signaling)
+# ============================================================
+# Aufgabe: WebSocket-Signaling für Nextcloud Talk
+#   - Koordiniert Verbindungsaufbau zwischen Teilnehmern
+#   - Leitet Media-Traffic über Janus MCU
+#   - Unterstützt beliebig viele Nextcloud-Backends
+# Port 8080: Signaling (intern, über Traefik nach außen)
+# ============================================================
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  namespace: default
+  name: {{ include "team-signaling.fullname" . }}-signaling
+  labels:
+    app: {{ include "team-signaling.fullname" . }}-signaling
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ include "team-signaling.fullname" . }}-signaling
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: {{ include "team-signaling.fullname" . }}-signaling
+      annotations:
+        timestamp: "{{ now | unixEpoch }}"
+    spec:
+      volumes:
+        - name: signaling-config
+          configMap:
+            name: {{ include "team-signaling.fullname" . }}-config
+      containers:
+        - name: signaling
+          image: strukturag/nextcloud-spreed-signaling:{{ .Values.signaling.imageTag }}
+          imagePullPolicy: {{ .Values.app.pullPolicy }}
+          ports:
+            - containerPort: 8080
+              name: signaling
+              protocol: TCP
+          volumeMounts:
+            - name: signaling-config
+              mountPath: /config/server.conf
+              subPath: server.conf
+          env:
+            # Janus MCU aktivieren
+            # WICHTIG: Ohne USE_JANUS=1 wird Janus komplett ignoriert
+            # und alle Teilnehmer kommunizieren im ineffizienten Mesh-Modus!
+            - name: USE_JANUS
+              value: "1"
+            # URL zum Janus-Pod (intern über Kubernetes-Service)
+            - name: JANUS_URL
+              value: ws://{{ include "team-signaling.fullname" . }}-janus:8188
+            # Maximale Bitraten (0 = unbegrenzt, Janus entscheidet via Simulcast)
+            - name: MAX_STREAM_BITRATE
+              value: "{{ .Values.signaling.maxStreamBitrate }}"
+            - name: MAX_SCREEN_BITRATE
+              value: "{{ .Values.signaling.maxScreenBitrate }}"
+            - name: TZ
+              value: Europe/Berlin

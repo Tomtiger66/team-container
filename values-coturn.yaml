@@ -1,0 +1,6 @@
+app:
+  name: turn
+  domain: example.org
+
+coturn:
+  staticAuthSecret: "110e302bcde5366bfbecbbac719e0d7f"

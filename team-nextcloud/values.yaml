@@ -1,4 +1,3 @@
-# Domain and subdomain for this service:
 app:
   name: cloud
   domain: example.org
@@ -8,13 +7,111 @@ admin:
   name: admin
   password: secret
 
-# Storage limit for nextcloud files and database:
+# storage limit for nextcloud files and database
 storage:
   limits:
     data: 128Gi
     database: 128Gi
 
-# No need to change these values. For internal database account only:
+# no need to change these values. For internal databas account only
 database:
   password: "secret#password"
   root_password: "very123secret#passWord!"
+
+# ============================================================
+# HPB-Sektion in values-nextcloud.yaml (vereinfacht)
+# ============================================================
+# Für mehrere Nextcloud-Instanzen oder große Videokonferenzen:
+# → team-signaling Chart separat installieren
+# ============================================================
+
+hpb:
+  # AIO-Hochleistungs-Backend aktivieren?
+  # true:  Signaling + Janus MCU + TURN in einem Container
+  #        Für EINE Nextcloud-Domain, kleine Server (~130 MB RAM)
+  # false: Kein HPB - entweder kein Signaling-Server oder
+  #        team-signaling Chart separat installieren
+  enabled: false
+
+  # Subdomain des AIO-Signaling-Servers
+  # Ergibt zusammen mit app.domain: talk.example.org
+  subdomain: talk
+
+  # Image Pull Policy
+  # IfNotPresent: empfohlen für Produktion
+  # Always:       nur für Testing
+  pullPolicy: IfNotPresent
+
+  # Image-Tag festschreiben
+  # Aktuelle Versionen: https://github.com/nextcloud-releases/aio-talk
+  imageTag: "latest"
+
+  # Secrets - generieren mit: openssl rand --hex 32
+  # signalingSecret: In Nextcloud Talk → Hochleistungs-Backend eintragen
+  signalingSecret: "<SIGNALING_SECRET>"
+  # turnSecret: In Nextcloud Talk → TURN-Server eintragen
+  turnSecret: "<TURN_SECRET>"
+  # internalSecret: Nicht in Nextcloud eintragen
+  internalSecret: "<INTERNAL_SECRET>"
+# ============================================================
+# Ergänzung für values-nextcloud.yaml
+# Nextcloud Talk - CSP für externe Signaling-Domain
+# ============================================================
+#
+# Nur nötig wenn der Signaling-Server auf einer ANDEREN Domain
+# als die Nextcloud-Instanz läuft, z.B.:
+#   cloud.twscomputer.de nutzt talk.sc-gmbh.eu als Signaling-Server
+#
+# Leer lassen oder auskommentieren wenn:
+#   - AIO-HPB auf gleicher Domain (talk.twscomputer.de)
+#   - Kein externer Signaling-Server konfiguriert
+# ============================================================
+
+talk:
+  # Externe Signaling-Server-Domains für CSP freigeben.
+  # Ohne diesen Eintrag blockiert der Browser die WebSocket-Verbindung
+  # zu einer fremden Domain (connect-src CSP-Verletzung).
+  signalingAllowedDomains:
+    - talk.example.org
+  # Weitere Domains nach demselben Muster ergänzen:
+  # - talk.andere-domain.de
+
+# ============================================================
+# Ergänzung für values-nextcloud.yaml
+# Collabora Online Document Server (Nextcloud Office)
+# ============================================================
+#
+# Voraussetzungen:
+#   - DNS: Wildcard-Eintrag oder expliziter A-Record für
+#     <collabora.subdomain>.<app.domain>
+#   - Nextcloud App "Nextcloud Office" muss installiert sein
+#   - Kein zusätzlicher Firewall-Port nötig (läuft über 443)
+#
+# Speicherverbrauch:
+#   - Basis: ~200 MB RAM
+#   - Pro offenem Dokument: ~50-100 MB zusätzlich
+#   - Empfehlung: maxDocuments an verfügbaren RAM anpassen
+#
+collabora:
+  # Subdomain für Collabora Online.
+  # Ergibt zusammen mit app.domain die vollständige URL,
+  # z.B. office + example.org → office.example.org
+  subdomain: office
+
+  # Docker-Image-Tag festschreiben um unerwartete Updates zu vermeiden.
+  # Aktuelle Version prüfen: https://hub.docker.com/r/collabora/code/tags
+  imageTag: "latest"
+
+  # Maximale Anzahl gleichzeitig geöffneter Dokumente.
+  # Faustregel: (verfügbarer RAM in MB - 500) / 100
+  # Beispiel: 4 GB RAM → (4096 - 500) / 100 ≈ 35 Dokumente
+  maxDocuments: "20"
+
+ # Nextcloud-Instanzen die auf diesen Collabora-Server zugreifen dürfen.
+  # Vollständige URL mit Port 443 angeben!
+  # In jeder Nextcloud unter Einstellungen → Nextcloud Office muss die
+  # Collabora-URL eingetragen werden.
+  # WOPI-Allowlist in Nextcloud auf 10.42.0.0/16 setzen (Kubernetes-intern).
+  allowedNextclouds:
+    - https://cloud.example.org:443
+    # - https://cloud.weiteresexample.org:443
