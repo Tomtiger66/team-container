@@ -1,4 +1,4 @@
----
+    ---
 # Web-Admin IngressRoute
 # Traefik übernimmt SSL für das Admin-Interface
 # Mail-Ports (SMTP/IMAP) haben keinen Ingress - laufen über hostPort
@@ -17,5 +17,6 @@ spec:
       services:
         - name: {{ include "team-stalwart.fullname" . }}-admin
           port: 8080
+          serversTransport: stalwart-transport   # kürzere Idle-Timeouts gegen 502 nach Node-Reboot
   tls:
     certResolver: default

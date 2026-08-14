@@ -219,7 +219,12 @@ recovery:
   password: "letMeIn123!" # Temporary password
 ```
 
-**Important Security Rule:** After using the emergency credentials to log in and set a new admin password, you **must set `enabled: false` again** in `values-stalwart.yaml` and redeploy (`helm upgrade mail team-stalwart --values values-stalwart.yaml`) to disable emergency access.
+**Important Security Rule:** After using the emergency credentials to log in and set a new admin password, you **must set `enabled: false` again** in `values-stalwart.yaml` and redeploy (`helm upgrade mail team-stalwart --values values-stalwart.yaml`) to disable emergency access.  
+  
+**Account Setup for Your Email Clients**  
+While email addresses should be set up using `name@mydomain.de`, you must use your full email address (`myname@mydomain.de`) as the username - not just `myname` - when configuring your address book and calendar.  
+Additionally, use `mail.mydomain.de` as the CalDAV/CardDAV server address, not just `mydomain`.
+ 
 
 ---
 
