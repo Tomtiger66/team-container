@@ -1,0 +1,52 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "team-nextcloud.fullname" . }}-whiteboard-configure
+  namespace: default
+  annotations:
+    # Läuft nach jedem helm install UND helm upgrade, damit ein
+    # geänderter jwtSecretKey auch automatisch nachgezogen wird.
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "5"
+    # Alten Job vor dem nächsten Lauf wegräumen (sonst Namenskollision)
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 3
+  template:
+    spec:
+      serviceAccountName: {{ include "team-nextcloud.fullname" . }}-whiteboard-configurer
+      restartPolicy: Never
+      containers:
+        - name: configure
+          image: bitnami/kubectl:latest
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+              echo "Warte auf laufenden Nextcloud-Pod..."
+              for i in $(seq 1 30); do
+                POD=$(kubectl get pods -l app={{ include "team-nextcloud.fullname" . }}-nc \
+                  -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+                if [ -n "$POD" ]; then
+                  STATUS=$(kubectl get pod "$POD" -o jsonpath='{.status.phase}')
+                  if [ "$STATUS" = "Running" ]; then
+                    break
+                  fi
+                fi
+                echo "  ...noch nicht bereit, warte 10s ($i/30)"
+                sleep 10
+              done
+
+              if [ -z "$POD" ]; then
+                echo "Kein Nextcloud-Pod gefunden, breche ab."
+                exit 1
+              fi
+
+              echo "Setze Whiteboard-Config in Pod $POD ..."
+              kubectl exec "$POD" -- php occ config:app:set whiteboard \
+                collabBackendUrl --value="https://{{ .Values.whiteboard.subdomain }}.{{ .Values.app.domain }}"
+              kubectl exec "$POD" -- php occ config:app:set whiteboard \
+                jwt_secret_key --value="{{ .Values.whiteboard.jwtSecretKey }}"
+
+              echo "Fertig."

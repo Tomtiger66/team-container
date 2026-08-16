@@ -67,6 +67,21 @@ spec:
   selector:
     app: {{ include "team-nextcloud.fullname" . }}-collabora
 ---
+# Whiteboard Collaboration-Server Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "team-nextcloud.fullname" . }}-whiteboard
+  namespace: default
+spec:
+  ports:
+    - name: whiteboard
+      port: 3002
+      targetPort: 3002
+      protocol: TCP
+  selector:
+    app: {{ include "team-nextcloud.fullname" . }}-whiteboard
+---
 # AIO HPB Service - nur aktiv wenn hpb.enabled: true
 {{- if .Values.hpb.enabled }}
 apiVersion: v1

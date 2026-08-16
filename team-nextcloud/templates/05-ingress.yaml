@@ -1,4 +1,3 @@
----
 apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
@@ -72,6 +71,26 @@ spec:
       services:
         - name: {{ include "team-nextcloud.fullname" . }}-collabora
           port: 9980
+  tls:
+    certResolver: default
+---
+# Whiteboard Collaboration-Server IngressRoute
+# WebSocket-Upgrade wird von Traefik automatisch durchgereicht,
+# keine zusaetzliche Middleware noetig.
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: ingressroute-{{ include "team-nextcloud.fullname" . }}-whiteboard
+  namespace: default
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`{{ .Values.whiteboard.subdomain }}.{{ .Values.app.domain }}`)
+      kind: Rule
+      services:
+        - name: {{ include "team-nextcloud.fullname" . }}-whiteboard
+          port: 3002
   tls:
     certResolver: default
 ---

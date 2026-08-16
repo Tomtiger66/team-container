@@ -1,0 +1,52 @@
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  namespace: default
+  name: {{ include "team-nextcloud.fullname" . }}-whiteboard
+  labels:
+    app: {{ include "team-nextcloud.fullname" . }}-whiteboard
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ include "team-nextcloud.fullname" . }}-whiteboard
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: {{ include "team-nextcloud.fullname" . }}-whiteboard
+      annotations:
+        timestamp: "{{ now | unixEpoch }}"
+    spec:
+      containers:
+        - name: whiteboard
+          # Nextcloud Whiteboard Server (Collaboration-Backend fuers
+          # Whiteboard-App). Verbindung zu Nextcloud laeuft ueber JWT,
+          # nicht ueber WOPI wie bei Collabora.
+          image: ghcr.io/nextcloud-releases/whiteboard:{{ .Values.whiteboard.imageTag }}
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 3002
+              name: whiteboard
+              protocol: TCP
+          env:
+            # Muss auf die oeffentliche Nextcloud-URL zeigen, wird fuer
+            # die JWT-Validierung und optionale Recording-Uploads benutzt.
+            - name: NEXTCLOUD_URL
+              value: https://{{ .Values.app.name }}.{{ .Values.app.domain }}
+            # Muss exakt mit dem Wert uebereinstimmen, der in Nextcloud
+            # unter occ config:app:set whiteboard jwt_secret_key gesetzt wird.
+            - name: JWT_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "team-nextcloud.fullname" . }}-secret
+                  key: whiteboardJwtSecret
+            # lru = In-Memory-Cache, ausreichend bei einem Replica.
+            # Bei mehreren Replicas muesste hier "redis" rein plus
+            # STORAGE_STRATEGY/REDIS_URL auf den vorhandenen Redis-Service
+            # zeigen ({{ include "team-nextcloud.fullname" . }}-redis).
+            - name: STORAGE_STRATEGY
+              value: "{{ .Values.whiteboard.storageStrategy }}"
+            - name: TZ
+              value: Europe/Berlin

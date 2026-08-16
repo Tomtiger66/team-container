@@ -31,7 +31,7 @@ hpb:
   #        Für EINE Nextcloud-Domain, kleine Server (~130 MB RAM)
   # false: Kein HPB - entweder kein Signaling-Server oder
   #        team-signaling Chart separat installieren
-  enabled: true
+  enabled: false
 
   # Subdomain des AIO-Signaling-Servers
   # Ergibt zusammen mit app.domain: talk.example.org
@@ -54,7 +54,7 @@ hpb:
   # internalSecret: Nicht in Nextcloud eintragen
   internalSecret: "<INTERNAL_SECRET>"
 
-  # ============================================================
+# ============================================================
 # Ergänzung für values-nextcloud.yaml
 # Nextcloud Talk - CSP für externe Signaling-Domain
 # ============================================================
@@ -116,3 +116,42 @@ collabora:
   allowedNextclouds:
     - https://cloud.example.org:443
     # - https://cloud.weiteresexample.org:443
+
+# ============================================================
+# Ergänzung für values-nextcloud.yaml
+# Nextcloud Whiteboard (Collaboration-Backend für Whiteboards)
+# ============================================================
+#
+# Voraussetzungen:
+#   - DNS: A-Record für <whiteboard.subdomain>.<app.domain>
+#   - Nextcloud App "Whiteboard" muss installiert sein
+#   - Nach dem Deploy in Nextcloud eintragen:
+#       occ config:app:set whiteboard collabBackendUrl \
+#         --value="https://<whiteboard.subdomain>.<app.domain>"
+#       occ config:app:set whiteboard jwt_secret_key \
+#         --value="<gleicher Wert wie whiteboard.jwtSecretKey>"
+#   - Kein zusätzlicher Firewall-Port nötig (läuft über 443)
+#
+# Speicherverbrauch: ~100 MB RAM (schlankes Node.js-Backend)
+#
+whiteboard:
+  # Subdomain für den Whiteboard-Server.
+  # Ergibt zusammen mit app.domain die vollständige URL,
+  # z.B. whiteboard + example.org → whiteboard.example.org
+  subdomain: whiteboard
+
+  # Docker-Image-Tag festschreiben um unerwartete Updates zu vermeiden.
+  # Aktuelle Version prüfen: https://github.com/nextcloud-releases/whiteboard/pkgs/container/whiteboard
+  imageTag: "stable"
+
+  # Storage-Strategie für Whiteboard-Daten und Socket-Zwischenspeicher.
+  # "lru"   = In-Memory-Cache, reicht für 1 Replica (Standard hier)
+  # "redis" = nötig bei mehreren Replicas, nutzt dann den vorhandenen
+  #           Redis-Service der Nextcloud-Instanz
+  storageStrategy: "lru"
+
+  # Secret zur Absicherung der Verbindung zwischen Nextcloud-App und
+  # Whiteboard-Backend. Generieren mit: openssl rand --hex 32
+  # (oder --hex 16, wenn es kürzer sein soll)
+  # Wird automatisch danach in Nextcloud via occ config:app:set eingetragen.
+  jwtSecretKey: "<WHITEBOARD_JWT_SECRET>"
