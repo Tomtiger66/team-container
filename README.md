@@ -32,6 +32,7 @@ Compared to the original ct-Open-Source/team-container:
 | PDF signatures | ❌ | **✅ LibreSign** |
 | Remote access | ❌ | **✅ RustDesk** |
 | TURN server | ❌ | **✅ coturn** |
+| Realtime whiteboards | ❌ | **✅ Nextcloud Whiteboard** |
 
 ---
 
@@ -51,6 +52,7 @@ Compared to the original ct-Open-Source/team-container:
 - **[Collabora Online](https://www.collaboraonline.com/collabora-online/)** (`team-nextcloud`) — Full office suite in the browser (Writer, Calc, Impress)
 - **[notify_push](https://github.com/nextcloud/notify_push)** (`team-nextcloud`) — Instant push notifications for desktop and mobile clients
 - **[LibreSign](https://libresign.coop/)** (`team-libresign`) — PDF digital signatures with self-signed CA
+- **[Nextcloud Whiteboard](https://github.com/nextcloud/whiteboard)** (`team-nextcloud`) — Realtime collaborative whiteboards (Excalidraw-based), separate WebSocket backend for live cursor/element sync between users
 
 #### Communication
 - **[Nextcloud Talk](https://nextcloud.com/talk/) HPB – AIO** (`team-nextcloud`, `hpb.enabled: true`) — All-in-one High Performance Backend for Talk (Signaling + Janus MCU + TURN), one Nextcloud instance
@@ -85,6 +87,7 @@ Traefik v3 (SSL termination, Let's Encrypt)
     ├── cloud.example.org      → Nextcloud
     ├── office.example.org     → Collabora Online
     ├── talk.example.org       → HPB Signaling Server
+    ├── whiteboard.example.org → Nextcloud Whiteboard WebSocket server
     ├── video.example.org      → Jitsi Meet
     ├── chat.example.org       → Rocket.Chat
     ├── mail.example.org       → Stalwart WebAdmin
@@ -137,7 +140,7 @@ Wait until `https://www.example.org` shows the landing page with a valid Let's E
 helm install nextcloud team-nextcloud --values values-nextcloud.yaml
 ```
 
-Nextcloud will be available at `https://cloud.example.org` after a few minutes.
+Nextcloud will be available at `https://cloud.example.org` after a few minutes. This also deploys the Nextcloud Whiteboard realtime backend — see [Nextcloud Whiteboard Setup](#nextcloud-whiteboard-setup-team-nextcloud) below for the config values and a known false-positive on the admin connection test.
 
 ### 4. Install optional services
 
@@ -225,6 +228,45 @@ recovery:
 While email addresses should be set up using `name@mydomain.de`, you must use your full email address (`myname@mydomain.de`) as the username - not just `myname` - when configuring your address book and calendar.  
 Additionally, use `mail.mydomain.de` as the CalDAV/CardDAV server address, not just `mydomain`.
  
+
+---
+
+## Nextcloud Whiteboard Setup (`team-nextcloud`)
+
+`team-nextcloud` also deploys the [Nextcloud Whiteboard](https://github.com/nextcloud/whiteboard) collaboration backend, enabling realtime, multi-user whiteboard editing (built on Excalidraw). Unlike Collabora, it talks to Nextcloud via a JWT-signed WebSocket connection rather than WOPI, and runs as its own service on a dedicated subdomain.
+
+### 1. Configuration
+
+Set the following in `values-nextcloud.yaml` before installing:
+
+```yaml
+whiteboard:
+  subdomain: whiteboard
+  imageTag: "stable"
+  storageStrategy: "lru"   # "redis" only needed if you scale to multiple replicas
+  jwtSecretKey: "<generate with: openssl rand --hex 32>"
+```
+
+### 2. Automatic `occ` configuration
+
+Manually entering `collabBackendUrl` and `jwt_secret_key` in **Administration → Whiteboard** after every install is easy to forget and easy to typo — the values must match `values-nextcloud.yaml` exactly. A Helm post-install/post-upgrade hook Job automates this: after every `helm install`/`helm upgrade`, it waits for the Nextcloud pod to become `Running`, then runs the two `occ config:app:set` calls for you. No manual admin-UI step required, and it re-applies automatically if you ever rotate `jwtSecretKey`.
+
+You can still verify (or override) the values manually at any time:
+```bash
+kubectl exec "$(kubectl get pods -l app=nextcloud-team-nextcloud-nc -o jsonpath='{.items[0].metadata.name}')" -- \
+  php occ config:app:get whiteboard collabBackendUrl
+```
+
+### 3. ⚠️ "Timeout" / "websocket error" on the admin settings page — usually a false positive
+
+The **Administration → Whiteboard** "Verify connection" button is known to report `websocket error` or `timeout` even when the Whiteboard server is fully functional. Two confirmed causes, neither of which indicates an actual outage:
+
+1. **Stale Content-Security-Policy after first install.** Nextcloud computes the page's CSP (including which WebSocket domains are allowed under `connect-src`) using cached app config on the PHP-FPM worker. If the Whiteboard app was configured *after* the Nextcloud pod was already running, the CSP served to the browser may still be missing `whiteboard.example.org`, causing the browser to block the connection outright (visible in the browser console as `Refused to connect ... violates Content Security Policy`).
+   **Fix:** `kubectl rollout restart deployment/nextcloud-team-nextcloud-nc`, then hard-reload the admin page (or use a private/incognito window — some browsers cache CSP headers more aggressively than a normal reload clears).
+
+2. **Server-side connection-test timeout on high-latency links.** Once the CSP issue above is resolved, the admin test button may *still* report `timeout` — this is a short client-side timeout on the Socket.IO handshake (polling → upgrade), which can be tight on high-latency connections (e.g. testing from overseas). **This does not mean the Whiteboard server is broken.**
+
+**The reliable test is not the admin settings page — it's opening an actual whiteboard file.** A small wifi/no-connection icon appears in the bottom-right corner of the whiteboard editor if the realtime backend isn't reachable; if that icon is absent (or disappears after a reload), the connection is working. For full confidence, open the same whiteboard as two different users simultaneously and confirm edits sync live between them.
 
 ---
 
