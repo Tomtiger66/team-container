@@ -30,7 +30,7 @@ spec:
          image: rocketchat/rocket.chat:latest
          imagePullPolicy: Always
          command:
-          - bash
+          - sh
           - -c
           - >
             for i in `seq 1 30`; do
