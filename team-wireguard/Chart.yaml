@@ -1,0 +1,6 @@
+apiVersion: v2
+name: team-wireguard
+description: WireGuard VPN-Server für den Teamserver (z.B. für Zugriff aus dem Ausland auf deutsche Dienste)
+type: application
+version: 0.1.0
+appVersion: "1.0"

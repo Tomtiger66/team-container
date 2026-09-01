@@ -1,0 +1,126 @@
+# ============================================================
+# hook-postup-fix.yaml
+# Workaround fuer eine Einschraenkung des linuxserver/wireguard-Images:
+# In Server Mode ist das Netzwerk-Interface fuer die NAT/MASQUERADE-
+# Regel nicht konfigurierbar - das Image verwendet in wg0.conf immer
+# fest "-o eth+" mit "-A" (ans Ende der FORWARD-Chain angehaengt).
+# Das ist kein Bug im eigentlichen Sinne: In Docker-Bridge-Netzwerken
+# (der von linuxserver unterstuetzte Standardfall) heisst das
+# Container-Interface immer "eth0", "eth+" matcht dort also immer.
+# Erst durch hostNetwork:true (hier noetig, weil kube-proxy/conntrack
+# sonst inaktive WireGuard-UDP-Handshakes killt) sieht der Container
+# die echten Host-Interfaces (z.B. "ens3" auf vielen KVM-Servern),
+# wo "eth+" nie matcht -> kein NAT -> kein Internet fuer die Peers.
+# Ein in der README erwaehnter "INTERFACE"-Parameter ist keine echte
+# Eingabe, sondern eine intern berechnete Hilfsvariable und wird sofort
+# ueberschrieben, falls man ihn selbst setzt.
+#
+# Dieser Hook laeuft automatisch nach jedem "helm install"/"helm
+# upgrade", wartet bis der Wireguard-Pod wg0.conf erzeugt hat,
+# korrigiert die Datei per sed (dynamische Interface-Erkennung via
+# "ip route get", FORWARD-Regel per -I statt -A, damit sie nicht von
+# kube-router/UFW-Forward-Ketten verschattet wird) und startet den
+# Pod einmal neu, damit die Korrektur aktiv wird.
+# ============================================================
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "team-wireguard.fullname" . }}-fixup
+  namespace: default
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "1"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "team-wireguard.fullname" . }}-fixup
+  namespace: default
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "1"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "team-wireguard.fullname" . }}-fixup
+  namespace: default
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "1"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "team-wireguard.fullname" . }}-fixup
+    namespace: default
+roleRef:
+  kind: Role
+  name: {{ include "team-wireguard.fullname" . }}-fixup
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "team-wireguard.fullname" . }}-postup-fix
+  namespace: default
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "5"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 2
+  template:
+    spec:
+      serviceAccountName: {{ include "team-wireguard.fullname" . }}-fixup
+      restartPolicy: Never
+      containers:
+        - name: postup-fix
+          image: alpine/k8s:1.30.4
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              CONF=/config/wg_confs/wg0.conf
+              echo "Warte auf $CONF ..."
+              for i in $(seq 1 30); do
+                if [ -f "$CONF" ]; then
+                  echo "Gefunden nach ${i}x2s."
+                  break
+                fi
+                sleep 2
+              done
+              if [ ! -f "$CONF" ]; then
+                echo "FEHLER: $CONF wurde nicht innerhalb von 60s erzeugt." >&2
+                exit 1
+              fi
+
+              if grep -q 'eth+' "$CONF" || grep -q '\-A FORWARD' "$CONF"; then
+                echo "Patche $CONF (Server-Mode-Interface ist bei diesem Image nicht konfigurierbar, hostNetwork-Interface weicht von eth+ ab) ..."
+                sed -i \
+                  -e "s#iptables -A FORWARD -i %i -j ACCEPT#iptables -I FORWARD 1 -i %i -j ACCEPT#g" \
+                  -e "s#iptables -A FORWARD -o %i -j ACCEPT#iptables -I FORWARD 1 -o %i -j ACCEPT#g" \
+                  -e 's#-o eth+ -j MASQUERADE#-o $(ip route get 1.1.1.1 | awk '"'"'{for(i=1;i<=NF;i++) if($i=="dev"){print $(i+1); exit}}'"'"') -j MASQUERADE#g' \
+                  "$CONF"
+                echo "Gepatcht. Neuer Inhalt:"
+                cat "$CONF"
+
+                POD=$(kubectl get pods -n default -l app={{ include "team-wireguard.fullname" . }} -o jsonpath='{.items[0].metadata.name}')
+                echo "Starte Pod $POD neu, damit die Korrektur aktiv wird ..."
+                kubectl delete pod -n default "$POD" --wait=false
+              else
+                echo "$CONF ist bereits korrekt, kein Patch noetig."
+              fi
+          volumeMounts:
+            - name: config
+              mountPath: /config
+      volumes:
+        - name: config
+          persistentVolumeClaim:
+            claimName: {{ include "team-wireguard.fullname" . }}-config

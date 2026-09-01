@@ -1,0 +1,89 @@
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  namespace: default
+  name: {{ include "team-wireguard.fullname" . }}
+  labels:
+    app: {{ include "team-wireguard.fullname" . }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: {{ include "team-wireguard.fullname" . }}
+  template:
+    metadata:
+      labels:
+        app: {{ include "team-wireguard.fullname" . }}
+      annotations:
+        timestamp: "{{ now | unixEpoch }}"
+    spec:
+      # hostNetwork: WireGuard laeuft ueber UDP. Kube-Proxy/Conntrack
+      # killt UDP-Handshakes nach ein paar Minuten Idle -> deshalb hier
+      # direkt am Host-Netzwerk statt ueber Service/NodePort.
+      # Funktioniert nur sauber auf Single-Node-Clustern (Team-Container-Setup).
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      containers:
+        - name: wireguard
+          image: lscr.io/linuxserver/wireguard:{{ .Values.wireguard.imageTag }}
+          imagePullPolicy: {{ .Values.app.pullpolicy | default "IfNotPresent" }}
+          securityContext:
+            capabilities:
+              add:
+                - NET_ADMIN
+                - SYS_MODULE
+          env:
+            - name: PUID
+              value: "1000"
+            - name: PGID
+              value: "1000"
+            - name: TZ
+              value: Europe/Berlin
+            # Oeffentliche Adresse des Servers, unter der die Peers den
+            # WireGuard-Endpunkt erreichen. Wird analog zu Nextcloud/Jitsi
+            # aus app.name (Subdomain) + app.domain gebildet.
+            - name: SERVERURL
+              value: "{{ .Values.app.name }}.{{ .Values.app.domain }}"
+            - name: SERVERPORT
+              value: "{{ .Values.wireguard.serverPort }}"
+            # Anzahl der Peer-Configs, die beim ersten Start generiert
+            # werden (einer pro Geraet: Laptop, Handy, ...).
+            - name: PEERS
+              value: "{{ .Values.wireguard.peers }}"
+            - name: PEERDNS
+              value: "{{ .Values.wireguard.peerDns }}"
+            - name: INTERNAL_SUBNET
+              value: "{{ .Values.wireguard.internalSubnet }}"
+            # 0.0.0.0/0 = kompletter Traffic des Peers geht durchs VPN
+            # (noetig, damit z.B. eBay Kleinanzeigen die deutsche
+            # Server-IP statt der ausländischen sieht).
+            - name: ALLOWEDIPS
+              value: "{{ .Values.wireguard.allowedIps }}"Server
+            # Das Netzwerk-Interface fuer die NAT/MASQUERADE-Regel ist in
+            # Server Mode nicht konfigurierbar - das Image verwendet intern
+            # immer "eth+" (funktioniert nur bei Docker-Bridge-Netzwerken,
+            # wo das Container-Interface immer "eth0" heisst). Bei uns mit
+            # hostNetwork:true sieht der Container die echten Host-Interfaces
+            # (z.B. "ens3"), wo "eth+" nie matcht. Der postup-fix-Hook
+            # (templates/hook-postup-fix.yaml) korrigiert das automatisch
+            # nach jedem Install/Upgrade - siehe dort fuer Details.
+            - name: LOG_CONFS
+              value: "true"
+          volumeMounts:
+            - name: config
+              mountPath: /config
+            - name: modules
+              mountPath: /lib/modules
+              readOnly: true
+          ports:
+            - containerPort: {{ .Values.wireguard.serverPort }}
+              protocol: UDP
+      volumes:
+        - name: config
+          persistentVolumeClaim:
+            claimName: {{ include "team-wireguard.fullname" . }}-config
+        - name: modules
+          hostPath:
+            path: /lib/modules

@@ -27,12 +27,13 @@ Compared to the original ct-Open-Source/team-container:
 | OS Support | Ubuntu 18.04 | **Ubuntu 22.04 up to 26.04** (and other K3s-compatible Linux distros) |
 | Nextcloud Talk HPB | ❌ | **✅ 3 variants** |
 | Nextcloud Office | ❌ | **✅ Collabora** |
+| Realtime whiteboards | ❌ | **✅ Nextcloud Whiteboard** |
+| PDF signatures | ❌ | **✅ LibreSign** |
 | Client Push | ❌ | **✅ notify_push** |
 | Mail server | ❌ | **✅ Stalwart** |
-| PDF signatures | ❌ | **✅ LibreSign** |
 | Remote access | ❌ | **✅ RustDesk** |
 | TURN server | ❌ | **✅ coturn** |
-| Realtime whiteboards | ❌ | **✅ Nextcloud Whiteboard** |
+| VPN server | ❌ | **✅ WireGuard** |
 
 ---
 
@@ -62,6 +63,7 @@ Compared to the original ct-Open-Source/team-container:
 #### Infrastructure
 - **[Stalwart Mail Server](https://stalw.art/)** (`team-stalwart`) — Modern all-in-one mail server (SMTP, IMAP, JMAP, WebAdmin)
 - **[RustDesk Server](https://rustdesk.com/)** (`team-rust`) — Self-hosted remote desktop server
+- **[WireGuard](https://www.wireguard.com/)** (`team-wireguard`) — Self-hosted VPN server, e.g. to give clients a fixed server-side IP/location or for secure remote access to internal services
 
 ---
 
@@ -97,7 +99,8 @@ hostPort (raw TCP/UDP, not via Traefik):
     ├── :25, :465, :587        → Stalwart SMTP
     ├── :143, :993             → Stalwart IMAP
     ├── :3478                  → TURN server
-    └── :31115-31119           → RustDesk
+    ├── :31115-31119           → RustDesk
+    └── :51820/udp             → WireGuard VPN
 ```
 
 ---
@@ -154,10 +157,14 @@ helm install chat team-chat --values values-chat.yaml
 # Stalwart Mail Server
 helm install mail team-stalwart --values values-stalwart.yaml
 
-# Enterprise Signaling Server (for multiple Nextcloud instances.Before installing, set hpb: enabled: false within your values-nextcloud.yaml)
+# team-signaling and team-coturn are alternatives - before installing either,
+# set hpb.enabled: false in your values-nextcloud.yaml (see the scenario table
+# under "Jitsi Meet – Audio/Video optimisation" to pick the right one)
+
+# Enterprise Signaling Server (for multiple Nextcloud instances)
 helm install signaling team-signaling --values values-signaling.yaml
 
-# Lightweight TURN server (for small Talk deployments. Before installing, set hpb: enabled: false within your values-nextcloud.yaml))
+# Lightweight TURN server (for small Talk deployments)
 helm install coturn team-coturn --values values-coturn.yaml
 
 # RustDesk remote desktop server
@@ -165,6 +172,9 @@ helm install rustdesk team-rust --values values-rust.yaml
 
 # PDF digital signatures
 helm install libresign team-libresign --values values-libresign.yaml
+
+# WireGuard VPN server
+helm install wireguard team-wireguard --values values-wireguard.yaml
 ```
 
 ---
@@ -175,17 +185,9 @@ helm install libresign team-libresign --values values-libresign.yaml
 
 > **K3s Requirement Note:** Stalwart requires K3s v1.27+ (for containerd zstd compression support). The `install.sh` script automatically fetches a current version of K3s that fulfills this prerequisite. This note is relevant if you plan to integrate `team-stalwart` into an existing, standalone Kubernetes cluster.
 
-### 1. Firewall Configuration
-Ensure the mail ports are open on your host firewall:
-```bash
-sudo ufw allow 25/tcp   comment 'Stalwart SMTP'
-sudo ufw allow 465/tcp  comment 'Stalwart SMTPS'
-sudo ufw allow 587/tcp  comment 'Stalwart Submission'
-sudo ufw allow 143/tcp  comment 'Stalwart IMAP'
-sudo ufw allow 993/tcp  comment 'Stalwart IMAPS'
-```
+> **Firewall:** See the central [Firewall](#firewall) section below for the required ports (SMTP/SMTPS/Submission/IMAP/IMAPS).
 
-### 2. DNS Requirements
+### 1. DNS Requirements
 Configure the following DNS records for your domain in your registrar's panel (e.g. Netcup, Hetzner, Cloudflare). 
 
 > **Important:** Host values for root records must be set to `@` (do not enter your full domain name into the host field).
@@ -203,7 +205,7 @@ Configure the following DNS records for your domain in your registrar's panel (e
 
 - **Reverse DNS (PTR):** Must be configured directly in your hosting provider's panel: `<Server-IP>` → `mail.example.org`.
 
-### 3. Finding the Complete DNS Zone File in Stalwart WebAdmin
+### 2. Finding the Complete DNS Zone File in Stalwart WebAdmin
 Stalwart provides auto-generated, complete DNS records (including both DKIM selector keys, DANE, and autodiscovery records) directly inside the WebAdmin interface:
 1. Log into `https://mail.example.org` using your administrator account (initial credentials can be read from `kubectl logs <stalwart-pod>`).
 2. Click on the **Monitor icon** at the bottom left corner of the navigation sidebar (this expands the **Management** menu).
@@ -212,7 +214,7 @@ Stalwart provides auto-generated, complete DNS records (including both DKIM sele
 5. In the drop-down menu, select **View Zone File**.
 6. Copy the exact DNS records provided into your domain registrar's DNS management panel.
 
-### 4. Emergency Access / Password Recovery
+### 3. Emergency Access / Password Recovery
 If you lose or forget your WebAdmin administrator password, `values-stalwart.yaml` includes a built-in recovery mechanism:
 
 ```yaml
@@ -270,6 +272,70 @@ The **Administration → Whiteboard** "Verify connection" button is known to rep
 
 ---
 
+## WireGuard VPN Setup (`team-wireguard`)
+
+`team-wireguard` deploys a [WireGuard](https://www.wireguard.com/) VPN server (`lscr.io/linuxserver/wireguard`) directly on the host network (`hostNetwork: true`) — WireGuard's UDP handshakes don't reliably survive being proxied through kube-proxy/conntrack on an idle connection, so it bypasses the usual Service/Ingress path entirely.
+
+### 1. Configuration
+
+Set the following in `values-wireguard.yaml` before installing:
+
+```yaml
+app:
+  name: vpn              # subdomain -> vpn.example.org
+  domain: example.org
+wireguard:
+  serverPort: "51820"
+  peers: "4"                   # one config per device
+  peerDns: "1.1.1.1,1.0.0.1"   # do NOT use "auto" - see note below
+  internalSubnet: "10.13.13.0"
+  allowedIps: "0.0.0.0/0"      # full-tunnel: ALL client traffic routes through this server
+```
+
+> **Why not `peerDns: "auto"`?** The upstream image disables its own internal DNS forwarder whenever it detects an already-populated `/etc/resolv.conf` at boot — which is always the case with `hostNetwork: true` on K3s (K3s injects its cluster-DNS IP there). `"auto"` silently leaves peers without any working DNS. Public resolvers sidestep the problem entirely and, as a side effect, aren't subject to typical ISP-level DNS filtering.
+
+Firewall: see the central [Firewall](#firewall) section below (UDP port only, must match `serverPort`).
+
+### 2. Automatic interface-detection fix (`postup-fix` hook)
+
+In server mode, this image's `PostUp`/`PostDown` NAT rule is hardcoded to interface `eth+` with no way to configure it — not a bug as such: in the image's officially supported deployment style (plain Docker bridge network), the container's own interface is always named `eth0` by Docker convention, so `eth+` always matches there. It only breaks because this chart uses `hostNetwork: true` (WireGuard's UDP handshakes don't reliably survive kube-proxy/conntrack on an idle connection), which exposes the container to the *host's* real interface name instead — `ens3`, `enp0s3`, etc. on most current KVM/Ubuntu servers, which `eth+` never matches. Without a fix, peers get a successful handshake but no internet access through the tunnel. (The README also mentions an `INTERFACE` variable for server mode — don't bother setting it, it's an internal helper variable computed from `INTERNAL_SUBNET` and gets overwritten immediately; see [linuxserver/docker-wireguard#417](https://github.com/linuxserver/docker-wireguard/issues/417) for the full story.)
+
+A Helm post-install/post-upgrade hook Job (`templates/hook-postup-fix.yaml`) works around this automatically: after every `helm install`/`helm upgrade`, it waits for `wg0.conf` to be generated, patches the `PostUp`/`PostDown` lines to detect the actual default-route interface at runtime (`ip route get 1.1.1.1`) and inserts the FORWARD accept rules at the top of the chain (`-I FORWARD 1` instead of `-A`, so they aren't shadowed by kube-router's/UFW's own forward-chain rules), then restarts the pod. No manual steps required — this runs automatically on every install/upgrade.
+
+### 3. Retrieving peer configs
+
+```bash
+# Pod name (excludes the postup-fix hook pod)
+kubectl get pods | grep wireguard-team-wireguard- | grep -v postup-fix | sed 's/ .*//'
+
+# Peer config as text
+kubectl exec "$(kubectl get pods | grep wireguard-team-wireguard- | grep -v postup-fix | sed 's/ .*//')" -- cat /config/peer1/peer1.conf
+
+# Peer config as a scannable QR code (for mobile clients)
+kubectl exec "$(kubectl get pods | grep wireguard-team-wireguard- | grep -v postup-fix | sed 's/ .*//')" -- sh -c "qrencode -t ansiutf8 < /config/peer1/peer1.conf"
+
+# Peer config as a PNG (use "kubectl cp", not "exec -it" - a TTY corrupts binary output)
+kubectl cp "default/$(kubectl get pods | grep wireguard-team-wireguard- | grep -v postup-fix | sed 's/ .*//'):/config/peer1/peer1.png" ./peer1.png
+```
+Replace `peer1` with `peer2`, `peer3`, ... for additional devices (one is generated per `peers` in `values-wireguard.yaml`).
+
+### 4. Adding the connection on a client
+
+- **iOS/Android:** Scan the QR code (PNG or ASCII) with the official WireGuard app.
+- **Linux (NetworkManager):**
+  ```bash
+  sudo nmcli connection import type wireguard file peer1.conf
+  ```
+  (Some distros' GUI import dialogs default to an OpenVPN-only file filter and reject a perfectly valid WireGuard file with a misleading error — `nmcli` bypasses this.)
+
+Verify from the server side:
+```bash
+kubectl exec "$(kubectl get pods | grep wireguard-team-wireguard- | grep -v postup-fix | sed 's/ .*//')" -- wg show
+```
+Non-zero `transfer` in **both** directions (not just `received`) confirms the tunnel has working NAT, not just a handshake.
+
+---
+
 ## Firewall
 
 This list can be run via copy/paste as a script to open the required ports. Simply comment out any ports for applications you don't need using a hash (#).
@@ -315,6 +381,9 @@ sudo ufw allow 587/tcp comment 'Stalwart Submission'
 sudo ufw allow 143/tcp comment 'Stalwart IMAP'
 sudo ufw allow 993/tcp comment 'Stalwart IMAPS'
 
+# WireGuard VPN
+sudo ufw allow 51820/udp comment 'WireGuard VPN'
+
 ```
 
 ---
@@ -343,6 +412,8 @@ https://video.example.org/ROOMNAME#config.audioQuality.stereo=false&config.disab
 ```
 
 ---
+
+### Choosing a TURN/Signaling setup by scale
 
 | Scenario | Solution |
 |----------|----------|

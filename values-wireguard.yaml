@@ -1,0 +1,85 @@
+# ============================================================
+# values-wireguard.yaml
+# WireGuard VPN-Server
+# ============================================================
+#
+# Voraussetzungen:
+#   - Server hat eine öffentliche IPv4-Adresse
+#   - UFW/Firewall muss den UDP-Port freigeben, z.B.:
+#       ufw allow 51820/udp comment 'WireGuard VPN'
+#   - Kein Traefik/Ingress nötig, WireGuard läuft direkt am Host
+#     (hostNetwork: true im Deployment)
+#
+# Peer-Configs abrufen nach dem ersten Deploy:
+#   kubectl get pods -l app=<fullname>
+#   kubectl exec -it <pod-name> -- cat /config/peer1/peer1.conf
+#   # oder als QR-Code fürs Handy:
+#   kubectl exec -it <pod-name> -- cat /config/peer1/peer1.png > peer1.png
+#
+# Hinweis zum postup-fix-Hook (templates/hook-postup-fix.yaml):
+# Das linuxserver/wireguard-Image hat in Server Mode keine Moeglichkeit,
+# das Netzwerk-Interface fuer die NAT/MASQUERADE-Regel zu konfigurieren -
+# es ist im Image fest auf "eth+" verdrahtet. Das funktioniert nur bei
+# Docker-Bridge-Netzwerken (dort heisst das Container-Interface immer
+# "eth0"), aber nicht mit hostNetwork:true, wo der Container die echten
+# Host-Interfaces sieht (z.B. "ens3" auf vielen KVM-Servern). Ein in der
+# README erwaehnter "INTERFACE"-Parameter existiert zwar im Skript, ist
+# aber nur eine intern berechnete Hilfsvariable (Subnetz-Praefix fuer die
+# Peer-DNS-Adresse) und hat mit dem Netzwerk-Interface nichts zu tun -
+# als Env-Var gesetzt wird er sofort ueberschrieben. Der postup-fix-Hook
+# patcht die generierte wg0.conf deshalb nach jedem Install/Upgrade
+# automatisch mit dem tatsaechlichen Interface (per "ip route get").
+# Kein manueller Eingriff noetig - einfach mitinstallieren lassen.
+#
+app:
+  # Subdomain, unter der die Peers den WireGuard-Endpunkt erreichen
+  # (z.B. "vpn" -> vpn.example.org). Wird nur zur Bildung von SERVERURL
+  # verwendet, es wird kein Ingress/Traefik-Eintrag angelegt.
+  name: vpn
+  # Domain, analog zu values-nextcloud.yaml / values-video.yaml.
+  domain: example.org
+  # Docker-Image-Tag/Pull-Policy. "Always" für Auto-Updates, sonst
+  # "IfNotPresent" um die Version festzuschreiben.
+  pullpolicy: IfNotPresent
+
+wireguard:
+  # Docker-Image-Tag festschreiben um unerwartete Updates zu vermeiden.
+  # Aktuelle Version prüfen: https://hub.docker.com/r/linuxserver/wireguard/tags
+  imageTag: "latest"
+
+  # WireGuard-Standardport. Kann geändert werden, muss dann aber auch
+  # in der Firewall entsprechend freigegeben werden.
+  serverPort: "51820"
+
+  # Anzahl der Peer-Configs (ein Peer pro Gerät: Laptop, Handy, ...).
+  # Werden beim ersten Start im PVC unter /config/peerN/ abgelegt.
+  peers: "3"
+
+  # DNS-Server, den die Peers über den Tunnel benutzen sollen.
+  # NICHT "auto" verwenden: Das Image deaktiviert seinen internen
+  # CoreDNS-Forwarder (10.13.13.1:53) selbst, sobald es beim Start ein
+  # bereits vorbelegtes /etc/resolv.conf vorfindet - und genau das ist
+  # bei hostNetwork:true in einem k3s-Cluster immer der Fall (k3s trägt
+  # dort die Cluster-DNS-IP ein). Die Folge: 10.13.13.1:53 nimmt keine
+  # Verbindungen an ("Connection refused"), alle DNS-Anfragen der Peers
+  # laufen ins Leere, nur direkte IP-Verbindungen funktionieren noch.
+  # Deshalb hier direkt öffentliche Resolver angeben, die über den
+  # Tunnel (AllowedIPs 0.0.0.0/0) ganz normal erreichbar sind.
+  peerDns: "1.1.1.1,1.0.0.1"
+
+  # Internes VPN-Subnetz zwischen Server und Peers.
+  internalSubnet: "10.13.13.0"
+
+  # 0.0.0.0/0 = kompletter Traffic des Peers läuft durch den Tunnel
+  # (Full-Tunnel). Nötig, damit z.B. eBay Kleinanzeigen die deutsche
+  # Server-IP sieht statt der ausländischen.
+  # Achtung: Bei Full-Tunnel läuft ALLES über den Server (auch
+  # Video-Calls, Streaming etc.) – bei hoher Latenz zwischen beispiels-
+  # weise Amerika und Deutschland spürbar langsamer. Praktikabler:
+  # WireGuard-Verbindung am Client nur bei Bedarf aktivieren
+  # (wg-quick up/down) statt dauerhaft verbunden zu bleiben.
+  allowedIps: "0.0.0.0/0"
+
+# Speicherplatz für /config (Server-Keys + Peer-Configs, sehr klein).
+storage:
+  config: 256Mi
